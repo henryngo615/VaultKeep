@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VaultKeep — Your passwords, zero-knowledge.</title>
+    <meta name="description" content="A zero-knowledge password manager for Mac, Windows, iOS, Android, and the browser. Argon2id + AES-256-GCM. Passkeys, TOTP, biometric unlock. The server never sees your data." />
+    <style>
+      :root {
+        --bg: #0c0e13;
+        --bg-2: #11141b;
+        --card: #151922;
+        --border: #232936;
+        --border-hi: #333b4b;
+        --text: #eef0f5;
+        --muted: #9aa3b5;
+        --accent: #6366f1;
+        --accent-2: #8b5cf6;
+        --warm-1: #ff8a3d;
+        --warm-2: #e0245e;
+        --ok: #34d399;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html { scroll-behavior: smooth; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+        overflow-x: hidden;
+      }
+      a { color: inherit; text-decoration: none; }
+      .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+      .gradient-text {
+        background: linear-gradient(120deg, #c4b5fd, #818cf8 40%, #f0abfc);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+      }
+
+      /* Nav */
+      nav {
+        position: sticky; top: 0; z-index: 50;
+        backdrop-filter: blur(12px);
+        background: rgba(12,14,19,0.7);
+        border-bottom: 1px solid var(--border);
+      }
+      .nav-inner { display: flex; align-items: center; gap: 14px; height: 62px; }
+      .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 16px; }
+      .logo {
+        width: 30px; height: 30px; border-radius: 9px;
+        background: linear-gradient(135deg, var(--warm-1), var(--warm-2));
+        display: grid; place-items: center;
+        box-shadow: 0 4px 16px rgba(224,36,94,0.4);
+      }
+      .logo svg { width: 17px; height: 17px; }
+      .nav-links { margin-left: auto; display: flex; gap: 26px; align-items: center; font-size: 14px; color: var(--muted); }
+      .nav-links a:hover { color: var(--text); }
+      .btn {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 10px 18px; border-radius: 10px; font-size: 14px; font-weight: 600;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        color: #fff; border: 0; cursor: pointer; transition: filter .15s, transform .05s;
+      }
+      .btn:hover { filter: brightness(1.08); }
+      .btn:active { transform: translateY(1px); }
+      .btn.ghost { background: var(--card); border: 1px solid var(--border); }
+      .btn.ghost:hover { border-color: var(--border-hi); filter: none; }
+      .nav-links .btn { color: #fff; }
+
+      /* Hero */
+      header.hero { position: relative; padding: 90px 0 70px; text-align: center; overflow: hidden; }
+      .glow {
+        position: absolute; top: -240px; left: 50%; transform: translateX(-50%);
+        width: 900px; height: 600px; pointer-events: none;
+        background: radial-gradient(closest-side, rgba(99,102,241,0.28), transparent 70%);
+      }
+      .pill {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 6px 14px; border-radius: 999px; font-size: 13px; color: var(--muted);
+        border: 1px solid var(--border); background: var(--bg-2); margin-bottom: 26px;
+      }
+      .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+      h1 { font-size: 58px; line-height: 1.05; letter-spacing: -1.5px; font-weight: 720; }
+      .hero p.sub { font-size: 19px; color: var(--muted); max-width: 600px; margin: 22px auto 34px; }
+      .cta-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+      .trust { margin-top: 30px; display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+      .trust span { display: inline-flex; align-items: center; gap: 7px; }
+      .check { color: var(--ok); }
+
+      /* App mock */
+      .mock-wrap { margin: 56px auto 0; max-width: 880px; position: relative; }
+      .mock {
+        border: 1px solid var(--border); border-radius: 18px; overflow: hidden;
+        background: linear-gradient(180deg, var(--bg-2), var(--bg));
+        box-shadow: 0 40px 120px -30px rgba(99,102,241,0.45), 0 20px 60px rgba(0,0,0,0.6);
+      }
+      .mock-bar { display: flex; align-items: center; gap: 7px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+      .tl { width: 11px; height: 11px; border-radius: 50%; }
+      .tl.r { background: #ff5f57; } .tl.y { background: #febc2e; } .tl.g { background: #28c840; }
+      .mock-body { display: grid; grid-template-columns: 1fr; gap: 12px; padding: 22px; }
+      .mock-head { display: flex; align-items: center; gap: 12px; }
+      .mini-logo { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg,var(--warm-1),var(--warm-2)); display:grid; place-items:center; }
+      .mini-logo svg { width: 18px; height: 18px; }
+      .status-chip { margin-left:auto; font-size:12px; color: var(--ok); border:1px solid var(--border); border-radius:999px; padding:4px 11px; display:flex; gap:6px; align-items:center; }
+      .row-item { display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--border); border-radius:12px; background: var(--card); }
+      .av { width:34px; height:34px; border-radius:9px; display:grid; place-items:center; font-weight:700; color:#fff; }
+      .row-item .meta b { font-size:14px; } .row-item .meta div { font-size:12px; color: var(--muted); }
+      .row-item code { margin-left:auto; font-family: ui-monospace, monospace; font-size:12px; color:#c4b5fd; }
+
+      /* Sections */
+      section { padding: 84px 0; }
+      .eyebrow { text-align:center; font-size:13px; font-weight:650; letter-spacing:1.5px; text-transform:uppercase; color: var(--accent); margin-bottom: 14px; }
+      h2 { text-align:center; font-size: 38px; letter-spacing:-1px; font-weight:700; }
+      .section-sub { text-align:center; color: var(--muted); font-size: 17px; max-width: 560px; margin: 16px auto 0; }
+
+      .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 52px; }
+      .feature {
+        border: 1px solid var(--border); border-radius: 16px; padding: 26px;
+        background: linear-gradient(180deg, var(--card), var(--bg-2));
+        transition: border-color .2s, transform .2s;
+      }
+      .feature:hover { border-color: var(--border-hi); transform: translateY(-3px); }
+      .feature .ic { width: 44px; height: 44px; border-radius: 11px; display:grid; place-items:center; margin-bottom: 16px;
+        background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.25); font-size: 20px; }
+      .feature h3 { font-size: 17px; margin-bottom: 8px; }
+      .feature p { color: var(--muted); font-size: 14px; }
+
+      /* Security flow */
+      .sec { background: var(--bg-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+      .flow { display:flex; align-items:center; justify-content:center; gap: 14px; flex-wrap: wrap; margin-top: 50px; }
+      .node {
+        border: 1px solid var(--border); border-radius: 14px; padding: 18px 22px; background: var(--card);
+        text-align:center; min-width: 150px;
+      }
+      .node .t { font-size: 12px; color: var(--muted); }
+      .node .v { font-weight: 650; margin-top: 4px; font-size: 15px; }
+      .node .v.mono { font-family: ui-monospace, monospace; color:#c4b5fd; }
+      .arrow { color: var(--accent); font-size: 22px; }
+      .sec-note { text-align:center; color: var(--muted); margin-top: 36px; font-size: 15px; }
+      .sec-note b { color: var(--text); }
+
+      /* Platforms */
+      .platforms { display:flex; gap: 16px; justify-content:center; flex-wrap: wrap; margin-top: 46px; }
+      .plat { border:1px solid var(--border); border-radius: 14px; padding: 20px 26px; background: var(--card); text-align:center; min-width: 130px; }
+      .plat .pic { font-size: 28px; margin-bottom: 8px; }
+      .plat b { font-size: 14px; } .plat div { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+      /* Stats */
+      .stats { display:grid; grid-template-columns: repeat(4,1fr); gap: 18px; margin-top: 50px; }
+      .stat { text-align:center; border:1px solid var(--border); border-radius:14px; padding:24px; background:var(--card); }
+      .stat .n { font-size: 34px; font-weight: 740; letter-spacing:-1px; }
+      .stat .l { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+      /* CTA */
+      .cta-band { text-align:center; padding: 90px 0; position: relative; }
+      .cta-band .glow2 { position:absolute; inset:0; background: radial-gradient(600px 240px at 50% 50%, rgba(139,92,246,0.18), transparent 70%); pointer-events:none; }
+      .cta-band h2 { font-size: 42px; }
+
+      footer { border-top: 1px solid var(--border); padding: 40px 0; color: var(--muted); font-size: 13px; }
+      .foot-inner { display:flex; align-items:center; gap: 16px; flex-wrap: wrap; }
+      .foot-inner .brand { font-size: 14px; color: var(--text); }
+      .foot-links { margin-left:auto; display:flex; gap: 22px; }
+      .foot-links a:hover { color: var(--text); }
+
+      @media (max-width: 760px) {
+        h1 { font-size: 40px; }
+        h2 { font-size: 30px; }
+        .grid, .stats { grid-template-columns: 1fr; }
+        .nav-links a:not(.btn) { display: none; }
+        .arrow { transform: rotate(90deg); }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- NAV -->
+    <nav>
+      <div class="wrap nav-inner">
+        <div class="brand">
+          <span class="logo">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C9.8 2 8 3.8 8 6v2H7a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6c0-2.2-1.8-4-4-4zm0 2c1.1 0 2 .9 2 2v2h-4V6c0-1.1.9-2 2-2zm0 9a1.6 1.6 0 0 1 .8 3v2.2a.8.8 0 1 1-1.6 0V16a1.6 1.6 0 0 1 .8-3z" fill="#fff"/></svg>
+          </span>
+          VaultKeep
+        </div>
+        <div class="nav-links">
+          <a href="#features">Features</a>
+          <a href="#security">Security</a>
+          <a href="#platforms">Platforms</a>
+          <a href="https://github.com/henryngo615/ThermalMonitor" class="btn ghost">GitHub</a>
+          <a href="#download" class="btn">Get VaultKeep</a>
+        </div>
+      </div>
+    </nav>
+
+    <!-- HERO -->
+    <header class="hero">
+      <div class="glow"></div>
+      <div class="wrap">
+        <span class="pill"><span class="dot"></span> Zero-knowledge · open source · end-to-end encrypted</span>
+        <h1>Your passwords,<br><span class="gradient-text">never ours.</span></h1>
+        <p class="sub">VaultKeep is a cross-platform password manager where encryption happens entirely on your devices. The server only ever stores ciphertext — your master password never leaves your hands.</p>
+        <div class="cta-row">
+          <a href="#download" class="btn">Download for free</a>
+          <a href="#security" class="btn ghost">How it works →</a>
+        </div>
+        <div class="trust">
+          <span><span class="check">✓</span> Argon2id + AES-256-GCM</span>
+          <span><span class="check">✓</span> Passkeys & TOTP</span>
+          <span><span class="check">✓</span> No tracking, ever</span>
+        </div>
+
+        <!-- App mock -->
+        <div class="mock-wrap">
+          <div class="mock">
+            <div class="mock-bar"><span class="tl r"></span><span class="tl y"></span><span class="tl g"></span></div>
+            <div class="mock-body">
+              <div class="mock-head">
+                <span class="mini-logo"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C9.8 2 8 3.8 8 6v2H7a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6c0-2.2-1.8-4-4-4zm0 2c1.1 0 2 .9 2 2v2h-4V6c0-1.1.9-2 2-2zm0 9a1.6 1.6 0 0 1 .8 3v2.2a.8.8 0 1 1-1.6 0V16a1.6 1.6 0 0 1 .8-3z" fill="#fff"/></svg></span>
+                <div style="text-align:left"><b>Thermal… VaultKeep</b><div style="font-size:11px;color:var(--muted)">zero-knowledge vault</div></div>
+                <span class="status-chip"><span class="dot" style="width:6px;height:6px;border-radius:50%;background:var(--ok)"></span> Unlocked</span>
+              </div>
+              <div class="row-item"><span class="av" style="background:#f59e0b">A</span><div class="meta" style="text-align:left"><b>Amazon</b><div>henry@home.tv</div></div><code>••••••••••</code></div>
+              <div class="row-item"><span class="av" style="background:#6366f1">G</span><div class="meta" style="text-align:left"><b>GitHub</b><div>henryngo615</div></div><code>••••••••••</code></div>
+              <div class="row-item"><span class="av" style="background:#ec4899">N</span><div class="meta" style="text-align:left"><b>Netflix</b><div>henry@home.tv</div></div><code>••••••••••</code></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- FEATURES -->
+    <section id="features">
+      <div class="wrap">
+        <div class="eyebrow">Everything you'd expect</div>
+        <h2>Built for security, designed for you</h2>
+        <p class="section-sub">A full vault for logins, passkeys, cards, notes, and keys — with the protections of the best commercial managers.</p>
+        <div class="grid">
+          <div class="feature"><div class="ic">🔐</div><h3>Zero-knowledge</h3><p>Your data is encrypted on your device before it's ever synced. The server stores opaque ciphertext and cannot read a single password.</p></div>
+          <div class="feature"><div class="ic">🔑</div><h3>Passkeys & FIDO2</h3><p>Sign in passwordlessly with a device key, or add a hardware security key. Phishing-resistant challenge–response, built in.</p></div>
+          <div class="feature"><div class="ic">📱</div><h3>Every device</h3><p>Native apps for macOS, Windows, iOS, and Android, plus a browser extension. Your vault syncs everywhere, instantly.</p></div>
+          <div class="feature"><div class="ic">⚡</div><h3>Smart autofill</h3><p>The extension fills logins automatically — but only on the exact matching site, so look-alike phishing domains get nothing.</p></div>
+          <div class="feature"><div class="ic">👆</div><h3>Biometric unlock</h3><p>Touch ID on Mac, Windows Hello on PC, Face ID on mobile. Your master password gates access; biometrics make it effortless.</p></div>
+          <div class="feature"><div class="ic">🛡️</div><h3>Built-in 2FA</h3><p>Time-based one-time codes with QR enrollment, verified server-side. Plus breach monitoring and weak-password alerts.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECURITY -->
+    <section id="security" class="sec">
+      <div class="wrap">
+        <div class="eyebrow">The security model</div>
+        <h2>Math, not trust</h2>
+        <p class="section-sub">Only your master password can turn stored ciphertext back into readable data. Here's the chain that protects it.</p>
+        <div class="flow">
+          <div class="node"><div class="t">You type</div><div class="v">Master password</div></div>
+          <span class="arrow">→</span>
+          <div class="node"><div class="t">Key derivation</div><div class="v mono">Argon2id</div></div>
+          <span class="arrow">→</span>
+          <div class="node"><div class="t">256-bit key</div><div class="v mono">AES-256-GCM</div></div>
+          <span class="arrow">→</span>
+          <div class="node"><div class="t">Synced as</div><div class="v">Ciphertext only</div></div>
+        </div>
+        <p class="sec-note">If someone steals the database — or the laptop file — they get <b>encrypted bytes and nothing else</b>. No master password, no key, no plaintext. Tamper with a single byte and decryption fails loudly.</p>
+      </div>
+    </section>
+
+    <!-- PLATFORMS -->
+    <section id="platforms">
+      <div class="wrap">
+        <div class="eyebrow">Works where you do</div>
+        <h2>One vault, every platform</h2>
+        <div class="platforms">
+          <div class="plat"><div class="pic">🍎</div><b>macOS</b><div>Touch ID</div></div>
+          <div class="plat"><div class="pic">🪟</div><b>Windows</b><div>Windows Hello</div></div>
+          <div class="plat"><div class="pic">📱</div><b>iOS</b><div>Face ID · autofill</div></div>
+          <div class="plat"><div class="pic">🤖</div><b>Android</b><div>Credential Mgr</div></div>
+          <div class="plat"><div class="pic">🌐</div><b>Browser</b><div>Chrome · Edge · Brave</div></div>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><div class="n gradient-text">256-bit</div><div class="l">AES-GCM encryption</div></div>
+          <div class="stat"><div class="n gradient-text">256 MB</div><div class="l">Argon2id memory cost</div></div>
+          <div class="stat"><div class="n gradient-text">0</div><div class="l">Passwords the server sees</div></div>
+          <div class="stat"><div class="n gradient-text">91</div><div class="l">Passing security tests</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section id="download" class="cta-band">
+      <div class="glow2"></div>
+      <div class="wrap">
+        <div class="eyebrow">Free &amp; open source</div>
+        <h2>Take back control of your passwords</h2>
+        <p class="section-sub">Download VaultKeep and set up your encrypted vault in under two minutes.</p>
+        <div class="cta-row" style="margin-top:30px">
+          <a href="#" class="btn">Download for macOS</a>
+          <a href="https://github.com/henryngo615/ThermalMonitor" class="btn ghost">View source on GitHub</a>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <div class="wrap foot-inner">
+        <span class="brand">
+          <span class="logo" style="width:24px;height:24px;border-radius:7px"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="width:13px;height:13px"><path d="M12 2C9.8 2 8 3.8 8 6v2H7a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6c0-2.2-1.8-4-4-4zm0 2c1.1 0 2 .9 2 2v2h-4V6c0-1.1.9-2 2-2zm0 9a1.6 1.6 0 0 1 .8 3v2.2a.8.8 0 1 1-1.6 0V16a1.6 1.6 0 0 1 .8-3z" fill="#fff"/></svg></span>
+          VaultKeep
+        </span>
+        <span>· zero-knowledge by design</span>
+        <div class="foot-links">
+          <a href="#features">Features</a>
+          <a href="#security">Security</a>
+          <a href="https://github.com/henryngo615/ThermalMonitor">GitHub</a>
+          <a href="#">MIT License</a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,84 @@
+// VaultKeep sync server schema.
+// CRITICAL: every column that could hold a secret stores CIPHERTEXT only.
+// The server is zero-knowledge — it can route and version blobs, never read them.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String        @id @default(uuid())
+  email         String        @unique
+  // Argon2 params + salt so any device can re-derive the master key.
+  kdfSalt       String
+  kdfMemoryKiB  Int           @default(262144)
+  kdfIterations Int           @default(4)
+  kdfParallel   Int           @default(4)
+  // Argon2 hash of the client-derived auth verifier (NOT the master password).
+  authHash      String
+  createdAt     DateTime      @default(now())
+  devices       Device[]
+  vaultItems    VaultItem[]
+  mfaMethods    MfaMethod[]
+  recoveryKeys  RecoveryKey[]
+  auditLogs     AuditLog[]
+}
+
+model Device {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id])
+  name             String
+  platform         String
+  publicKey        String // X25519, base64
+  signingPublicKey String // Ed25519, base64
+  approved         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  lastSeenAt       DateTime @default(now())
+}
+
+model VaultItem {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  ciphertext String // base64(nonce||ct||tag) — opaque to the server
+  version    Int      @default(1)
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId, updatedAt])
+}
+
+model MfaMethod {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+  kind   String // "totp" | "webauthn" | "sms"
+  // TOTP secret is itself encrypted to the user's vault key.
+  secret String
+  label  String
+}
+
+model RecoveryKey {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  // Hash of the recovery key; the plaintext is shown once at setup.
+  keyHash   String
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  type      String
+  deviceId  String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}

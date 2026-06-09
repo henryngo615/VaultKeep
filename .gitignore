@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build output
+dist/
+**/dist/
+*.tsbuildinfo
+
+# Local data / secrets (never commit vault data or DBs)
+*.log
+db.json
+.vaultkeep/
+.vaultkeep-server/
+*.token
+
+# Electron build artifacts
+out/
+*.app
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/

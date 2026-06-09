@@ -1,0 +1,29 @@
+{
+  "name": "@vaultkeep/desktop",
+  "version": "0.1.0",
+  "description": "VaultKeep desktop app (Electron) for macOS & Windows",
+  "type": "module",
+  "main": "dist/electron/main.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "build:electron": "tsc -p tsconfig.electron.json && mkdir -p dist/renderer && cp src/renderer/* dist/renderer/ && cp src/electron/preload.cjs dist/electron/",
+    "start": "npm run build:electron && electron dist/electron/main.js"
+  },
+  "dependencies": {
+    "@vaultkeep/crypto": "*",
+    "@vaultkeep/server": "*",
+    "@vaultkeep/shared": "*",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/qrcode": "^1.5.6",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "peerDependencies": {
+    "electron": "^33.0.0"
+  },
+  "comment": "Run `npm i -D electron` then `npm start` to launch the GUI. The app core + tests need no Electron."
+}

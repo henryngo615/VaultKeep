@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>VaultKeep</title>
+    <style>
+      :root {
+        --bg:#0f1115; --elev:#171a21; --input:#1c2029; --border:#262b36;
+        --border-hi:#353b49; --text:#eceef3; --muted:#8b93a3;
+        --accent:#6366f1; --accent-2:#8b5cf6; --ok:#34d399;
+      }
+      * { box-sizing:border-box; margin:0; font-family:-apple-system,system-ui,sans-serif; }
+      body { width:300px; background:var(--bg); color:var(--text);
+        background:radial-gradient(400px 160px at 50% -60px, rgba(99,102,241,0.15), transparent 70%), var(--bg);
+        -webkit-font-smoothing:antialiased; font-size:13px; }
+      header { display:flex; align-items:center; gap:9px; padding:13px 14px; border-bottom:1px solid var(--border); }
+      .logo { width:28px; height:28px; border-radius:8px; background:linear-gradient(135deg,#ff8a3d,#e0245e);
+        display:grid; place-items:center; box-shadow:0 3px 12px rgba(224,36,94,0.4); }
+      .logo svg { width:15px; height:15px; }
+      .brand b { font-size:13px; font-weight:650; } .brand small { display:block; font-size:10px; color:var(--muted); }
+      .chip { margin-left:auto; font-size:10.5px; padding:3px 9px; border-radius:999px; border:1px solid var(--border); color:var(--muted); display:flex; gap:5px; align-items:center; }
+      .chip .dot { width:6px; height:6px; border-radius:50%; background:var(--muted); }
+      .chip.on .dot { background:var(--ok); box-shadow:0 0 8px var(--ok); }
+      .chip.on { color:var(--ok); }
+      main { padding:14px; }
+      .muted { color:var(--muted); font-size:12px; line-height:1.5; }
+      input { width:100%; padding:9px 11px; border-radius:9px; border:1px solid var(--border);
+        background:var(--input); color:var(--text); font-size:13px; margin-bottom:9px; }
+      input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(99,102,241,0.18); }
+      button { width:100%; padding:9px 12px; border-radius:9px; border:0; font-size:13px; font-weight:550;
+        color:#fff; background:linear-gradient(135deg,var(--accent),var(--accent-2)); cursor:pointer; }
+      button.ghost { background:var(--elev); color:var(--text); border:1px solid var(--border); }
+      .hidden { display:none; }
+
+      /* Unlocked: current site + matches */
+      .site { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); margin-bottom:12px; }
+      .site .favi { width:18px; height:18px; border-radius:5px; background:#fff; display:grid; place-items:center; font-size:11px; }
+      .site b { color:var(--text); }
+      .match { border:1px solid var(--border); border-radius:12px; padding:11px; background:var(--elev); margin-bottom:9px; display:flex; align-items:center; gap:10px; }
+      .av { width:32px; height:32px; min-width:32px; border-radius:8px; display:grid; place-items:center; font-weight:700; color:#fff; }
+      .match .meta b { font-size:13px; } .match .meta div { font-size:11px; color:var(--muted); }
+      .fill { width:auto; margin-left:auto; padding:7px 13px; font-size:12px; }
+      .safe { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--ok); margin:4px 2px 12px; }
+      .divider { height:1px; background:var(--border); margin:12px 0; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="logo"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C9.8 2 8 3.8 8 6v2H7a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6c0-2.2-1.8-4-4-4zm0 2c1.1 0 2 .9 2 2v2h-4V6c0-1.1.9-2 2-2zm0 9a1.6 1.6 0 0 1 .8 3v2.2a.8.8 0 1 1-1.6 0V16a1.6 1.6 0 0 1 .8-3z" fill="#fff"/></svg></span>
+      <div class="brand"><b>VaultKeep</b><small>autofill &amp; vault</small></div>
+      <span id="chip" class="chip"><span class="dot"></span><span id="chipText">Locked</span></span>
+    </header>
+
+    <main>
+      <!-- Locked -->
+      <section id="locked">
+        <p class="muted" style="margin-bottom:11px">Unlock to enable autofill on this tab.</p>
+        <input id="master" type="password" placeholder="Master password" />
+        <button id="unlock">Unlock</button>
+        <p id="status" class="muted" style="margin-top:8px"></p>
+      </section>
+
+      <!-- Unlocked: matches for the current site -->
+      <section id="unlocked" class="hidden">
+        <div class="site"><span class="favi">🐙</span> Logins for <b id="host">github.com</b></div>
+
+        <div class="match">
+          <span class="av" style="background:#6366f1">G</span>
+          <div class="meta"><b>GitHub</b><div>henryngo615</div></div>
+          <button class="fill">Fill</button>
+        </div>
+
+        <div class="safe">🛡️ Origin verified — safe to autofill</div>
+
+        <div class="divider"></div>
+        <button class="ghost" style="margin-bottom:8px">🎲 Generate password</button>
+        <button class="ghost">🔒 Lock vault</button>
+      </section>
+    </main>
+    <script src="./popup.js"></script>
+  </body>
+</html>

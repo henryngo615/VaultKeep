@@ -1,0 +1,9 @@
+{
+  "name": "@vaultkeep/shared",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/types.ts",
+    "./types.js": "./src/types.ts"
+  }
+}

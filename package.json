@@ -1,0 +1,17 @@
+{
+  "name": "vaultkeep",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A zero-knowledge, cross-platform password manager",
+  "workspaces": [
+    "packages/crypto",
+    "packages/shared",
+    "packages/server",
+    "packages/desktop",
+    "packages/extension"
+  ],
+  "scripts": {
+    "test": "npm run test --workspace=@vaultkeep/crypto && npm run test --workspace=@vaultkeep/server && npm run test --workspace=@vaultkeep/desktop && npm run test --workspace=@vaultkeep/extension",
+    "build": "npm run build --workspaces --if-present"
+  }
+}

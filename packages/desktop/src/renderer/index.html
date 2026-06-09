@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:" />
+    <title>VaultKeep</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0f1115;
+        --bg-elev: #171a21;
+        --bg-input: #1c2029;
+        --border: #262b36;
+        --border-hi: #353b49;
+        --text: #eceef3;
+        --muted: #8b93a3;
+        --accent: #6366f1;
+        --accent-2: #8b5cf6;
+        --danger: #f87171;
+        --ok: #34d399;
+      }
+      * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif; }
+      html, body { margin: 0; height: 100%; }
+      body {
+        background:
+          radial-gradient(1200px 400px at 50% -200px, rgba(99,102,241,0.14), transparent 70%),
+          var(--bg);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+        font-size: 13px;
+      }
+
+      /* Header */
+      header {
+        display:flex; align-items:center; gap:10px;
+        padding:14px 16px;
+        border-bottom:1px solid var(--border);
+        background: rgba(20,23,30,0.6);
+        backdrop-filter: blur(8px);
+        position: sticky; top: 0; z-index: 10;
+      }
+      .logo {
+        width:30px; height:30px; border-radius:9px;
+        background:linear-gradient(135deg,#ff8a3d,#e0245e);
+        display:grid; place-items:center;
+        box-shadow: 0 4px 14px rgba(224,36,94,0.35);
+      }
+      .logo svg { width:16px; height:16px; }
+      .brand { display:flex; flex-direction:column; line-height:1.15; }
+      .brand b { font-size:14px; font-weight:650; letter-spacing:0.2px; }
+      .brand small { font-size:10.5px; color:var(--muted); }
+      .status-pill {
+        margin-left:auto; display:flex; align-items:center; gap:5px;
+        font-size:11px; color:var(--muted);
+        padding:4px 9px; border:1px solid var(--border); border-radius:999px;
+        background: var(--bg-elev);
+      }
+      .dot { width:6px; height:6px; border-radius:50%; background:var(--muted); }
+      .dot.on { background:var(--ok); box-shadow:0 0 8px var(--ok); }
+
+      main { padding:16px; }
+
+      /* Inputs & buttons */
+      input {
+        width:100%; padding:10px 12px; border-radius:10px;
+        border:1px solid var(--border); background:var(--bg-input);
+        color:var(--text); font-size:13px; margin-bottom:9px;
+        transition: border-color .15s, box-shadow .15s;
+      }
+      input::placeholder { color:#5b6373; }
+      input:focus {
+        outline:none; border-color:var(--accent);
+        box-shadow:0 0 0 3px rgba(99,102,241,0.18);
+      }
+      button {
+        padding:10px 14px; border-radius:10px; border:0;
+        font-size:13px; font-weight:550; cursor:pointer;
+        color:#fff;
+        background:linear-gradient(135deg,var(--accent),var(--accent-2));
+        transition: filter .15s, transform .05s, background .15s;
+      }
+      button:hover { filter:brightness(1.08); }
+      button:active { transform:translateY(1px); }
+      button.ghost {
+        background:var(--bg-elev); color:var(--text);
+        border:1px solid var(--border);
+      }
+      button.ghost:hover { background:#20242e; border-color:var(--border-hi); filter:none; }
+      .row { display:flex; gap:8px; }
+      .muted { color:var(--muted); font-size:12px; line-height:1.5; }
+      .hidden { display:none; }
+
+      /* Segmented tabs */
+      .seg {
+        display:flex; gap:3px; padding:3px; margin-bottom:14px;
+        background:var(--bg-elev); border:1px solid var(--border); border-radius:11px;
+      }
+      .seg .tab {
+        flex:1; background:transparent; color:var(--muted);
+        border:0; padding:8px; border-radius:8px; font-weight:550;
+      }
+      .seg .tab.active { background:var(--bg-input); color:var(--text); box-shadow:0 1px 2px rgba(0,0,0,0.3); }
+      .seg .tab:hover { filter:none; color:var(--text); }
+
+      /* Card wrapper for forms */
+      .card {
+        background:var(--bg-elev); border:1px solid var(--border);
+        border-radius:14px; padding:16px; margin-bottom:14px;
+      }
+      .card h2 { margin:0 0 4px; font-size:13px; font-weight:600; }
+
+      /* Toolbar */
+      .toolbar { display:flex; gap:8px; margin-bottom:12px; }
+      .toolbar input { margin:0; flex:1; }
+      .icon-btn {
+        width:38px; min-width:38px; display:grid; place-items:center; padding:0;
+      }
+
+      /* Add form */
+      .pwrow { display:flex; gap:8px; }
+      .pwrow input { flex:1; }
+      .gen { font-family: ui-monospace, monospace; background:var(--bg-input);
+             padding:9px 11px; border-radius:9px; word-break:break-all;
+             margin-bottom:9px; font-size:12px; border:1px solid var(--border); color:#c4b5fd; }
+
+      /* Item list */
+      #list { display:flex; flex-direction:column; gap:8px; }
+      .item {
+        padding:11px 12px; border:1px solid var(--border); border-radius:12px;
+        background:var(--bg-elev); cursor:pointer; transition:border-color .15s, background .15s;
+      }
+      .item:hover { border-color:var(--border-hi); background:#191d25; }
+      .item-head { display:flex; align-items:center; gap:11px; }
+      .avatar {
+        width:34px; height:34px; min-width:34px; border-radius:9px;
+        display:grid; place-items:center; font-weight:650; font-size:14px; color:#fff;
+      }
+      .item .t { font-weight:600; font-size:13px; }
+      .item .u { color:var(--muted); font-size:11.5px; margin-top:1px; }
+      .chev { margin-left:auto; color:var(--muted); transition:transform .2s; }
+      .item.open .chev { transform:rotate(90deg); }
+
+      .detail { margin-top:11px; padding-top:11px; border-top:1px solid var(--border); }
+      .field { display:flex; align-items:center; gap:7px; margin-bottom:7px; }
+      .field:last-child { margin-bottom:0; }
+      .field .lbl { color:var(--muted); font-size:10.5px; width:64px; text-transform:uppercase; letter-spacing:0.4px; }
+      .field code {
+        flex:1; font-family:ui-monospace,monospace; font-size:12px;
+        background:var(--bg-input); padding:6px 9px; border-radius:8px;
+        word-break:break-all; border:1px solid var(--border);
+      }
+      .field button {
+        font-size:11px; padding:6px 9px; border-radius:8px;
+        background:var(--bg-input); color:var(--text); border:1px solid var(--border); font-weight:500;
+      }
+      .field button:hover { background:#23272f; filter:none; border-color:var(--border-hi); }
+
+      /* Empty state */
+      .empty { text-align:center; color:var(--muted); padding:30px 10px; }
+      .empty .big { font-size:30px; margin-bottom:8px; opacity:0.7; }
+
+      /* QR */
+      .qr-wrap { text-align:center; margin:6px 0 10px; }
+      #qrImg { width:184px; height:184px; border-radius:12px; background:#fff; padding:8px; box-shadow:0 8px 24px rgba(0,0,0,0.4); }
+
+      .err { color:var(--danger); font-size:12px; margin-top:4px; min-height:16px; }
+      .err.ok { color:var(--ok); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2C9.8 2 8 3.8 8 6v2H7a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6c0-2.2-1.8-4-4-4zm0 2c1.1 0 2 .9 2 2v2h-4V6c0-1.1.9-2 2-2zm0 9a1.6 1.6 0 0 1 .8 3v2.2a.8.8 0 1 1-1.6 0V16a1.6 1.6 0 0 1 .8-3z" fill="#fff"/>
+        </svg>
+      </div>
+      <div class="brand"><b>VaultKeep</b><small>zero-knowledge vault</small></div>
+      <div class="status-pill"><span id="statusDot" class="dot"></span><span id="status">Locked</span></div>
+    </header>
+
+    <main>
+      <!-- Unlock screen -->
+      <section id="lock">
+        <div class="seg">
+          <button id="tabLocal" class="tab active">Unlock locally</button>
+          <button id="tabOnline" class="tab">Sign in online</button>
+        </div>
+
+        <!-- Local unlock -->
+        <div id="localPane" class="card">
+          <h2>Welcome back</h2>
+          <p class="muted" style="margin:0 0 12px">Enter your master password to unlock this device's vault.</p>
+          <input id="master" type="password" placeholder="Master password" autofocus />
+          <button id="unlockBtn" style="width:100%">Unlock</button>
+          <button id="bioBtn" class="ghost hidden" style="width:100%; margin-top:8px">Unlock with Touch ID</button>
+          <label id="enrollRow" class="muted hidden" style="display:flex; gap:7px; align-items:center; margin-top:11px; cursor:pointer">
+            <input id="enrollChk" type="checkbox" style="width:auto; margin:0" />
+            Remember with Touch ID / Windows Hello
+          </label>
+        </div>
+
+        <!-- Online account -->
+        <div id="onlinePane" class="card hidden">
+          <h2>Sign in</h2>
+          <p class="muted" id="onlineHint" style="margin:0 0 12px">Sign in to sync across devices. The server never sees your password.</p>
+          <input id="email" type="email" placeholder="Email" />
+          <input id="onlinePass" type="password" placeholder="Master password" />
+          <input id="mfaCode" placeholder="6-digit authenticator code" />
+          <button id="loginBtn" style="width:100%">Sign in</button>
+          <button id="deviceLoginBtn" class="ghost hidden" style="width:100%; margin-top:8px">🔑 Sign in with this device</button>
+          <button id="registerBtn" class="ghost" style="width:100%; margin-top:8px">Create account</button>
+        </div>
+
+        <!-- TOTP enrollment -->
+        <div id="enrollPane" class="card hidden">
+          <h2>Set up two-factor auth</h2>
+          <p class="muted" style="margin:0 0 8px">Scan with Google Authenticator, Authy, or 1Password, then enter the 6-digit code.</p>
+          <div class="qr-wrap"><img id="qrImg" alt="TOTP QR" /></div>
+          <p class="muted" style="text-align:center; margin:0 0 10px">Can't scan? Key: <code id="totpSecret" style="font-size:11px; color:#c4b5fd"></code></p>
+          <input id="enrollCode" placeholder="6-digit code from your app" />
+          <button id="confirmBtn" style="width:100%">Confirm & finish setup</button>
+        </div>
+
+        <p id="lockErr" class="err"></p>
+      </section>
+
+      <!-- Vault -->
+      <section id="vault" class="hidden">
+        <div class="toolbar">
+          <input id="search" placeholder="Search vault…" />
+          <button id="syncBtn" class="ghost icon-btn" title="Sync">⟳</button>
+          <button id="lockBtn" class="ghost icon-btn" title="Lock">🔒</button>
+        </div>
+
+        <div class="card">
+          <h2 style="margin-bottom:10px">Add item</h2>
+          <input id="newTitle" placeholder="Title (e.g. Amazon)" />
+          <input id="newUser" placeholder="Username or email" />
+          <div class="pwrow">
+            <input id="newPass" placeholder="Password" />
+            <button id="genBtn" class="ghost icon-btn" title="Generate strong password">🎲</button>
+          </div>
+          <div id="genOut" class="gen hidden"></div>
+          <button id="addBtn" style="width:100%">Add to vault</button>
+        </div>
+
+        <div id="list"></div>
+      </section>
+    </main>
+    <script src="./renderer.js"></script>
+  </body>
+</html>

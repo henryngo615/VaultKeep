@@ -1,0 +1,17 @@
+{
+  "name": "@vaultkeep/extension",
+  "version": "0.1.0",
+  "description": "VaultKeep browser extension (MV3) — autofill, save, generate",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "build:ext": "tsc -p tsconfig.ext.json && npm run bundle && cp src/popup.html src/popup.js dist/",
+    "bundle": "esbuild src/content.ts --bundle --format=iife --outfile=dist/content.js && esbuild src/background.ts --bundle --format=esm --outfile=dist/background.js",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "@types/chrome": "^0.0.270"
+  }
+}

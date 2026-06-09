@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "VaultKeep",
+  "version": "0.1.0",
+  "description": "Autofill, save, and generate passwords from your VaultKeep vault.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "dist/background.js", "type": "module" },
+  "action": { "default_popup": "dist/popup.html" },
+  "content_scripts": [
+    {
+      "matches": ["https://*/*"],
+      "js": ["dist/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "_note": "Run `npm run build:ext` to populate dist/. popup.html/js are copied there by the build."
+}

@@ -1,14 +1,15 @@
 // VaultKeep sync server schema.
 // CRITICAL: every column that could hold a secret stores CIPHERTEXT only.
 // The server is zero-knowledge — it can route and version blobs, never read them.
+// Connection URL lives in prisma.config.ts (Prisma 7), read from DATABASE_URL.
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -43,24 +44,31 @@ model Device {
 }
 
 model VaultItem {
-  id         String   @id @default(uuid())
+  // Item ids are client-generated and only unique PER USER — the composite key
+  // makes cross-tenant overwrites impossible at the database level.
+  id         String
   userId     String
   user       User     @relation(fields: [userId], references: [id])
   ciphertext String // base64(nonce||ct||tag) — opaque to the server
   version    Int      @default(1)
   updatedAt  DateTime @updatedAt
 
+  @@id([userId, id])
   @@index([userId, updatedAt])
 }
 
 model MfaMethod {
-  id     String @id @default(uuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
-  kind   String // "totp" | "webauthn" | "sms"
-  // TOTP secret is itself encrypted to the user's vault key.
-  secret String
-  label  String
+  id        String  @id @default(uuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+  kind      String // "totp" | "webauthn" | "sms"
+  // TOTP secret must be server-verifiable (encrypt at rest with a KMS key in prod).
+  secret    String
+  label     String  @default("")
+  // Two-phase enrollment: pending until the user proves possession with a code.
+  confirmed Boolean @default(false)
+
+  @@unique([userId, kind])
 }
 
 model RecoveryKey {

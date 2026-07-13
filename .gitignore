@@ -7,6 +7,12 @@ dist/
 **/dist/
 *.tsbuildinfo
 
+# Generated Prisma client (run `npm run db:generate` in packages/server)
+packages/server/src/generated/
+
+# Embedded Postgres data dirs used by integration tests
+**/.pgdata*/
+
 # Local data / secrets (never commit vault data or DBs)
 *.log
 db.json

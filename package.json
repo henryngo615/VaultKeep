@@ -13,5 +13,12 @@
   "scripts": {
     "test": "npm run test --workspace=@vaultkeep/crypto && npm run test --workspace=@vaultkeep/server && npm run test --workspace=@vaultkeep/desktop && npm run test --workspace=@vaultkeep/extension",
     "build": "npm run build --workspaces --if-present"
+  },
+  "allowScripts": {
+    "@embedded-postgres/windows-x64@18.4.0-beta.17": true,
+    "@prisma/client@7.8.0": true,
+    "@prisma/engines@7.8.0": true,
+    "embedded-postgres@18.4.0-beta.17": true,
+    "prisma@7.8.0": true
   }
 }

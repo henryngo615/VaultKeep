@@ -40,13 +40,45 @@ const DB_PATH = process.env.VK_DB ?? join(homedir(), ".vaultkeep-server", "db.js
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, "..", "..", "public");
 
-// File-backed, zero-knowledge persistence (survives restarts; swap for Prisma in prod).
-const db = new FileDb(DB_PATH);
-const vault = new VaultService(new FileVaultRepository(db));
+/**
+ * Storage selection: Prisma/Postgres when DATABASE_URL is set, otherwise the
+ * zero-setup JSON file store. Either way the server only ever stores
+ * ciphertext, verifier hashes, and public keys.
+ */
+async function buildRepositories() {
+  if (process.env.DATABASE_URL) {
+    const adapters = await import("./prisma/adapters.js");
+    // Resolved at runtime so the server still compiles before `prisma generate`.
+    const generatedClient = "./generated/prisma/client.js";
+    const { PrismaClient } = await import(generatedClient);
+    const { PrismaPg } = await import("@prisma/adapter-pg");
+    const prisma = new PrismaClient({
+      adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+    });
+    console.log("Storage: Postgres via Prisma (DATABASE_URL set)");
+    return {
+      vault: new adapters.PrismaVaultRepository(prisma),
+      accounts: new adapters.PrismaAccountRepository(prisma),
+      devices: new adapters.PrismaDeviceRepository(prisma),
+      mfa: new adapters.PrismaMfaRepository(prisma),
+    };
+  }
+  const db = new FileDb(DB_PATH);
+  console.log(`Storage: JSON file at ${DB_PATH} (set DATABASE_URL for Postgres)`);
+  return {
+    vault: new FileVaultRepository(db),
+    accounts: new FileAccountRepository(db),
+    devices: new FileDeviceRepository(db),
+    mfa: new FileMfaRepository(db),
+  };
+}
+
+const repos = await buildRepositories();
+const vault = new VaultService(repos.vault);
 const tokens = new TokenService(JWT_SECRET);
-const accounts = new AccountService(new FileAccountRepository(db));
-const deviceService = new DeviceService(new FileDeviceRepository(db));
-const mfa = new MfaService(new FileMfaRepository(db));
+const accounts = new AccountService(repos.accounts);
+const deviceService = new DeviceService(repos.devices);
+const mfa = new MfaService(repos.mfa);
 const webauthn = new WebauthnService(deviceService);
 
 const MIME: Record<string, string> = {

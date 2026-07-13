@@ -1,0 +1,23 @@
+# Local Postgres for VaultKeep server development.
+#   docker compose up -d
+#   export DATABASE_URL=postgresql://vaultkeep:vaultkeep@localhost:5432/vaultkeep
+#   npm run db:migrate && npm run dev
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vaultkeep
+      POSTGRES_PASSWORD: vaultkeep
+      POSTGRES_DB: vaultkeep
+    ports:
+      - "5432:5432"
+    volumes:
+      - vaultkeep-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vaultkeep"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  vaultkeep-pgdata:

@@ -75,8 +75,18 @@ The suite proves the security-critical properties:
 ```bash
 cd packages/server
 npm install
-npm test       # 32 tests: sync, JWT, guard, TOTP, accounts, device trust
-npm run dev    # boots http://localhost:8787 (in-memory, zero setup)
+npm test       # 51 tests: sync, JWT, guard, TOTP, accounts, device trust,
+               # plus an integration suite against a real (embedded) Postgres
+npm run dev    # boots http://localhost:8787 (file-backed, zero setup)
+```
+
+To run on Postgres instead of the JSON file store:
+
+```bash
+docker compose up -d                 # in packages/server
+export DATABASE_URL=postgresql://vaultkeep:vaultkeep@localhost:5432/vaultkeep
+npm run db:generate && npm run db:migrate
+npm run dev
 ```
 
 Real zero-knowledge auth flow (the server never receives the master password):
@@ -123,8 +133,10 @@ that signature and cannot mint approvals itself.
    **passkey-style device auth** (FIDO2/WebAuthn challenge–response: the server
    issues a single-use challenge, the device signs it with its Ed25519 key, the
    server verifies — phishing-resistant, enables passwordless "sign in with this
-   device"), and **Prisma/Postgres adapters** for all repositories.
-   **Next:** run the Prisma adapters against a live DB; browser-native WebAuthn
+   device"), and **Prisma/Postgres storage** for all repositories — set
+   `DATABASE_URL` and the server runs on Postgres (committed migration,
+   docker-compose for dev, integration tests against a real embedded Postgres).
+   **Next:** browser-native WebAuthn
 3. ✅ Desktop app core (Electron): master-password unlock, encrypted-at-rest
    local vault, two-way sync with conflict handling, password generator. The
    GUI shell (main/preload/renderer) is wired over IPC so the renderer never

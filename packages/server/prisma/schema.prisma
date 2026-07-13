@@ -26,6 +26,7 @@ model User {
   devices       Device[]
   vaultItems    VaultItem[]
   mfaMethods    MfaMethod[]
+  passkeys      PasskeyCredential[]
   recoveryKeys  RecoveryKey[]
   auditLogs     AuditLog[]
 }
@@ -69,6 +70,21 @@ model MfaMethod {
   confirmed Boolean @default(false)
 
   @@unique([userId, kind])
+}
+
+model PasskeyCredential {
+  // WebAuthn credential id (base64url) — chosen by the authenticator.
+  credentialId String   @id
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  // Public key as JSON-encoded JWK; -7 ES256 | -8 EdDSA | -257 RS256.
+  publicKeyJwk String
+  alg          Int
+  signCount    Int      @default(0)
+  name         String   @default("Passkey")
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
 }
 
 model RecoveryKey {

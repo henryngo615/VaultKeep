@@ -4,6 +4,7 @@ import type { AccountRepository, AccountRecord } from "../auth/account.repositor
 import type { VaultRepository, StoredItem } from "../vault/vault.repository.js";
 import type { DeviceRepository, DeviceRecord } from "../devices/device.service.js";
 import type { MfaRepository, MfaRecord } from "../mfa/mfa.service.js";
+import type { PasskeyRepository, PasskeyRecord } from "../auth/passkey.service.js";
 
 /**
  * Dead-simple JSON-file persistence so the web vault survives restarts without
@@ -17,15 +18,16 @@ interface DbShape {
   devices: DeviceRecord[];
   vault: StoredItem[];
   mfa: MfaRecord[];
+  passkeys: PasskeyRecord[];
 }
 
 export class FileDb {
-  private data: DbShape = { accounts: [], devices: [], vault: [], mfa: [] };
+  private data: DbShape = { accounts: [], devices: [], vault: [], mfa: [], passkeys: [] };
 
   constructor(private readonly path: string) {
     try {
       this.data = JSON.parse(readFileSync(path, "utf8"));
-      for (const k of ["accounts", "devices", "vault", "mfa"] as const) {
+      for (const k of ["accounts", "devices", "vault", "mfa", "passkeys"] as const) {
         this.data[k] ??= [];
       }
     } catch {
@@ -93,6 +95,24 @@ export class FileDeviceRepository implements DeviceRepository {
   async setApproved(userId: string, deviceId: string, approved: boolean) {
     const d = this.db.raw.devices.find((x) => x.userId === userId && x.id === deviceId);
     if (d) { d.approved = approved; this.db.save(); }
+  }
+}
+
+export class FilePasskeyRepository implements PasskeyRepository {
+  constructor(private readonly db: FileDb) {}
+  async listForUser(userId: string) {
+    return this.db.raw.passkeys.filter((c) => c.userId === userId);
+  }
+  async get(credentialId: string) {
+    return this.db.raw.passkeys.find((c) => c.credentialId === credentialId) ?? null;
+  }
+  async create(rec: PasskeyRecord) {
+    this.db.raw.passkeys.push({ ...rec });
+    this.db.save();
+  }
+  async updateSignCount(credentialId: string, signCount: number) {
+    const c = this.db.raw.passkeys.find((x) => x.credentialId === credentialId);
+    if (c) { c.signCount = signCount; this.db.save(); }
   }
 }
 

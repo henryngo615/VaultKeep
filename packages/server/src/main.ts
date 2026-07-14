@@ -10,9 +10,10 @@ import { AccountService } from "./auth/account.service.js";
 import { DeviceService } from "./devices/device.service.js";
 import { MfaService } from "./mfa/mfa.service.js";
 import { WebauthnService } from "./auth/webauthn.service.js";
+import { PasskeyService } from "./auth/passkey.service.js";
 import {
   FileDb, FileAccountRepository, FileVaultRepository,
-  FileDeviceRepository, FileMfaRepository,
+  FileDeviceRepository, FileMfaRepository, FilePasskeyRepository,
 } from "./store/filedb.js";
 import QRCode from "qrcode";
 
@@ -61,6 +62,7 @@ async function buildRepositories() {
       accounts: new adapters.PrismaAccountRepository(prisma),
       devices: new adapters.PrismaDeviceRepository(prisma),
       mfa: new adapters.PrismaMfaRepository(prisma),
+      passkeys: new adapters.PrismaPasskeyRepository(prisma),
     };
   }
   const db = new FileDb(DB_PATH);
@@ -70,6 +72,7 @@ async function buildRepositories() {
     accounts: new FileAccountRepository(db),
     devices: new FileDeviceRepository(db),
     mfa: new FileMfaRepository(db),
+    passkeys: new FilePasskeyRepository(db),
   };
 }
 
@@ -80,6 +83,12 @@ const accounts = new AccountService(repos.accounts);
 const deviceService = new DeviceService(repos.devices);
 const mfa = new MfaService(repos.mfa);
 const webauthn = new WebauthnService(deviceService);
+// Browser-native WebAuthn (passkeys). rpId/origins are configurable for prod.
+const passkeys = new PasskeyService(repos.passkeys, {
+  rpId: process.env.WEBAUTHN_RP_ID ?? "localhost",
+  rpName: "VaultKeep",
+  origins: (process.env.WEBAUTHN_ORIGINS ?? `http://localhost:${PORT}`).split(","),
+});
 
 const MIME: Record<string, string> = {
   ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
@@ -91,7 +100,13 @@ const MIME: Record<string, string> = {
 async function serveStatic(res: ServerResponse, urlPath: string): Promise<boolean> {
   let rel = decodeURIComponent(urlPath.split("?")[0]);
   if (rel === "/") rel = "/index.html";
-  if (rel === "/app" || rel === "/app/") rel = "/app/index.html";
+  // Redirect /app -> /app/ so the page's relative script URLs resolve under
+  // /app/ (served at /app they'd hit the root and 401 off the API guard).
+  if (rel === "/app") {
+    res.writeHead(301, { location: "/app/" }).end();
+    return true;
+  }
+  if (rel === "/app/") rel = "/app/index.html";
   const full = normalize(join(PUBLIC_DIR, rel));
   if (!full.startsWith(PUBLIC_DIR)) { res.writeHead(403).end(); return true; }
   try {
@@ -207,6 +222,34 @@ const server = createServer(async (req, res) => {
     return json(res, 200, { token: full });
   }
 
+  // --- Passkey (browser WebAuthn) as the MFA step ---------------------------
+  // Options for navigator.credentials.get(): needs a pre-MFA token.
+  if (req.method === "POST" && path === "/auth/passkey/mfa/options") {
+    const b = await readBody(req);
+    const claims = tokens.verify(b.token ?? "");
+    if (!claims) return json(res, 401, { error: "invalid token" });
+    if (!(await passkeys.hasPasskeys(claims.sub))) {
+      return json(res, 404, { error: "no passkeys enrolled" });
+    }
+    return json(res, 200, { options: await passkeys.assertionOptions(claims.sub) });
+  }
+
+  // Verify the assertion -> full token (passkey satisfies MFA).
+  if (req.method === "POST" && path === "/auth/passkey/mfa/verify") {
+    const b = await readBody(req);
+    const claims = tokens.verify(b.token ?? "");
+    if (!claims) return json(res, 401, { error: "invalid token" });
+    const result = await passkeys.verifyAssertion(claims.sub, {
+      credentialId: b.credentialId ?? "",
+      clientDataJSON: b.clientDataJSON ?? "",
+      authenticatorData: b.authenticatorData ?? "",
+      signature: b.signature ?? "",
+    });
+    if (!result.ok) return json(res, 401, { error: result.reason });
+    const full = tokens.issue({ sub: claims.sub, did: claims.did, mfa: true }, 3600);
+    return json(res, 200, { token: full });
+  }
+
   // --- Passkey-style device auth: request a challenge to sign --------------
   if (req.method === "POST" && path === "/auth/webauthn/challenge") {
     const b = await readBody(req);
@@ -262,6 +305,22 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && path === "/devices") {
     return json(res, 200, { devices: await deviceService.list(userId) });
+  }
+
+  // --- Passkey registration (requires a FULL session: token+MFA+device) ----
+  if (req.method === "POST" && path === "/auth/passkey/register/options") {
+    const email = (await accounts.emailFor(userId)) ?? "vaultkeep user";
+    return json(res, 200, { options: await passkeys.registrationOptions(userId, email) });
+  }
+
+  if (req.method === "POST" && path === "/auth/passkey/register/verify") {
+    const b = await readBody(req);
+    const result = await passkeys.verifyRegistration(userId, {
+      clientDataJSON: b.clientDataJSON ?? "",
+      attestationObject: b.attestationObject ?? "",
+      name: b.name,
+    });
+    return json(res, result.ok ? 201 : 400, result);
   }
 
   const itemMatch = path.match(/^\/vault\/items\/([\w-]+)$/);

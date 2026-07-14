@@ -57,6 +57,11 @@ export class AccountService {
     return { userId: rec.id };
   }
 
+  /** Email for a known user id (e.g. to label a passkey), or null. */
+  async emailFor(userId: string): Promise<string | null> {
+    return (await this.repo.findById(userId))?.email ?? null;
+  }
+
   /**
    * The public KDF params a client needs BEFORE login, so it can derive the
    * verifier with the same salt. Returns a decoy for unknown emails to avoid

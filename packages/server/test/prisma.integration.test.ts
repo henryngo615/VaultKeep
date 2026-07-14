@@ -7,6 +7,7 @@ import {
   PrismaAccountRepository,
   PrismaDeviceRepository,
   PrismaMfaRepository,
+  PrismaPasskeyRepository,
 } from "../src/prisma/adapters.js";
 import { VaultService } from "../src/vault/vault.service.js";
 import { AccountService } from "../src/auth/account.service.js";
@@ -194,6 +195,31 @@ describe("Prisma adapters against live Postgres", () => {
 
     const changed = await vault.pull(userId, cutoff);
     expect(changed.map((i) => i.id)).toEqual(["new"]);
+  });
+
+  it("persists passkey credentials and sign counters", async () => {
+    const { userId } = await accounts.register({
+      email: "passkey@example.com",
+      authVerifier: "verifier-strong-enough-9",
+      kdfSalt: "c2FsdA==",
+    });
+    const repo = new PrismaPasskeyRepository(prisma);
+    await repo.create({
+      credentialId: "Y3JlZC1wZw",
+      userId,
+      publicKeyJwk: JSON.stringify({ kty: "EC", crv: "P-256", x: "eA", y: "eQ" }),
+      alg: -7,
+      signCount: 0,
+      name: "YubiKey",
+      createdAt: new Date().toISOString(),
+    });
+    const stored = await repo.get("Y3JlZC1wZw");
+    expect(stored?.userId).toBe(userId);
+    expect(stored?.alg).toBe(-7);
+
+    await repo.updateSignCount("Y3JlZC1wZw", 7);
+    expect((await repo.get("Y3JlZC1wZw"))?.signCount).toBe(7);
+    expect(await repo.listForUser(userId)).toHaveLength(1);
   });
 
   it("isolates tenants: the same item id for two users never collides", async () => {

@@ -133,10 +133,14 @@ that signature and cannot mint approvals itself.
    **passkey-style device auth** (FIDO2/WebAuthn challenge–response: the server
    issues a single-use challenge, the device signs it with its Ed25519 key, the
    server verifies — phishing-resistant, enables passwordless "sign in with this
-   device"), and **Prisma/Postgres storage** for all repositories — set
+   device"), **Prisma/Postgres storage** for all repositories — set
    `DATABASE_URL` and the server runs on Postgres (committed migration,
-   docker-compose for dev, integration tests against a real embedded Postgres).
-   **Next:** browser-native WebAuthn
+   docker-compose for dev, integration tests against a real embedded Postgres),
+   and **browser-native WebAuthn passkeys** (dependency-free CBOR/COSE
+   ceremonies: origin + rpId validation, single-use expiring challenges,
+   sign-count clone detection; the web vault registers a platform passkey with
+   `navigator.credentials.create()` and uses it as the MFA step — verified in a
+   real browser with a virtual authenticator).
 3. ✅ Desktop app core (Electron): master-password unlock, encrypted-at-rest
    local vault, two-way sync with conflict handling, password generator. The
    GUI shell (main/preload/renderer) is wired over IPC so the renderer never

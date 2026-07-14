@@ -13,6 +13,7 @@ import type { VaultRepository, StoredItem } from "../vault/vault.repository.js";
 import type { AccountRepository, AccountRecord } from "../auth/account.repository.js";
 import type { DeviceRepository, DeviceRecord } from "../devices/device.service.js";
 import type { MfaRepository, MfaRecord } from "../mfa/mfa.service.js";
+import type { PasskeyRepository, PasskeyRecord } from "../auth/passkey.service.js";
 
 // Minimal structural type for the generated PrismaClient we depend on.
 interface PrismaLike {
@@ -20,6 +21,7 @@ interface PrismaLike {
   user: any;
   device: any;
   mfaMethod: any;
+  passkeyCredential: any;
 }
 
 export class PrismaVaultRepository implements VaultRepository {
@@ -126,6 +128,26 @@ export class PrismaMfaRepository implements MfaRepository {
   }
 }
 
+export class PrismaPasskeyRepository implements PasskeyRepository {
+  constructor(private readonly db: PrismaLike) {}
+
+  async listForUser(userId: string): Promise<PasskeyRecord[]> {
+    return (await this.db.passkeyCredential.findMany({ where: { userId } })).map(toPasskey);
+  }
+  async get(credentialId: string): Promise<PasskeyRecord | null> {
+    const row = await this.db.passkeyCredential.findUnique({ where: { credentialId } });
+    return row ? toPasskey(row) : null;
+  }
+  async create(rec: PasskeyRecord): Promise<void> {
+    await this.db.passkeyCredential.create({
+      data: { ...rec, createdAt: new Date(rec.createdAt) },
+    });
+  }
+  async updateSignCount(credentialId: string, signCount: number): Promise<void> {
+    await this.db.passkeyCredential.update({ where: { credentialId }, data: { signCount } });
+  }
+}
+
 // --- row -> domain mappers --------------------------------------------------
 
 function toStoredItem(r: any): StoredItem {
@@ -146,6 +168,17 @@ function toAccount(r: any): AccountRecord {
     kdfIterations: r.kdfIterations,
     kdfParallel: r.kdfParallel,
     authHash: r.authHash,
+    createdAt: (r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)).toISOString(),
+  };
+}
+function toPasskey(r: any): PasskeyRecord {
+  return {
+    credentialId: r.credentialId,
+    userId: r.userId,
+    publicKeyJwk: r.publicKeyJwk,
+    alg: r.alg,
+    signCount: r.signCount,
+    name: r.name,
     createdAt: (r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)).toISOString(),
   };
 }

@@ -55,26 +55,24 @@
       <!-- Locked -->
       <section id="locked">
         <p class="muted" style="margin-bottom:11px">Unlock to enable autofill on this tab.</p>
+        <input id="email" type="email" placeholder="Email" />
         <input id="master" type="password" placeholder="Master password" />
+        <input id="code" placeholder="6-digit authenticator code" />
         <button id="unlock">Unlock</button>
         <p id="status" class="muted" style="margin-top:8px"></p>
+        <details style="margin-top:10px">
+          <summary class="muted" style="cursor:pointer; font-size:11px">Server</summary>
+          <input id="server" placeholder="http://localhost:8787" style="margin-top:8px" />
+        </details>
       </section>
 
-      <!-- Unlocked: matches for the current site -->
+      <!-- Unlocked -->
       <section id="unlocked" class="hidden">
-        <div class="site"><span class="favi">🐙</span> Logins for <b id="host">github.com</b></div>
-
-        <div class="match">
-          <span class="av" style="background:#6366f1">G</span>
-          <div class="meta"><b>GitHub</b><div>henryngo615</div></div>
-          <button class="fill">Fill</button>
-        </div>
-
-        <div class="safe">🛡️ Origin verified — safe to autofill</div>
-
+        <div class="site"><span class="favi">🔓</span> <b id="count">0</b>&nbsp;logins ready to autofill</div>
+        <div class="safe">🛡️ Autofill only fills exact, HTTPS origins</div>
+        <p id="ustatus" class="muted" style="margin:4px 2px 12px"></p>
         <div class="divider"></div>
-        <button class="ghost" style="margin-bottom:8px">🎲 Generate password</button>
-        <button class="ghost">🔒 Lock vault</button>
+        <button id="lock" class="ghost">🔒 Lock vault</button>
       </section>
     </main>
     <script src="./popup.js"></script>

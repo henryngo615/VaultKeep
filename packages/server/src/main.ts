@@ -204,7 +204,9 @@ const server = createServer(async (req, res) => {
     const b = await readBody(req);
     const userId = await accounts.verifyLogin(b.email ?? "", b.authVerifier ?? "");
     if (!userId) return json(res, 401, { error: "invalid credentials" });
-    if (!b.deviceId) return json(res, 400, { error: "deviceId required" });
+    // A VERIFIED client with no device yet (fresh browser/extension) gets its
+    // userId so it can enroll itself, then log in again. No token is issued.
+    if (!b.deviceId) return json(res, 200, { userId, needsDevice: true });
     // Pre-MFA token: mfa:false until a second factor is satisfied.
     const token = tokens.issue({ sub: userId, did: b.deviceId, mfa: false }, 300);
     return json(res, 200, { token, userId, mfaRequired: true });

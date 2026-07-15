@@ -47,7 +47,7 @@ Master Password ──Argon2id(256MiB,t=4,p=4)──▶ 256-bit key
 | `packages/crypto` | KDF, AES-256-GCM, device keys, generator | ✅ **implemented + tested** |
 | `packages/shared` | Shared TypeScript types | ✅ implemented |
 | `packages/server` | Sync API, zero-knowledge auth, devices, TOTP, Prisma adapters | ✅ **implemented + tested** (in-memory store; Prisma adapters ready for the prod swap) |
-| `packages/extension` | MV3 browser extension | ✅ **autofill engine implemented + tested**; popup/session UI stubbed |
+| `packages/extension` | MV3 browser extension | ✅ **autofill engine + popup unlock/sync implemented + tested** |
 | `packages/desktop` | Electron desktop (Mac/Win) | ✅ **app core implemented + tested**; Electron GUI shell included |
 | `packages/mobile` | Flutter mobile (iOS/Android) | ⬜ scaffold |
 
@@ -147,8 +147,12 @@ that signature and cannot mint approvals itself.
    touches the key. **Next:** Touch ID / Windows Hello unlock, then mobile.
 4. ✅ Browser extension autofill engine: field classifier, origin-scoped
    matcher, and a fill planner that refuses to write passwords on look-alike
-   domains or non-HTTPS pages. **Next:** popup unlock wired to crypto/sync,
-   passkey support
+   domains or non-HTTPS pages — plus **real popup unlock**: Argon2id (same
+   WASM as the crypto core) → zero-knowledge login with TOTP → WebCrypto
+   AES-GCM decryption of the synced vault, session in memory-only
+   `chrome.storage.session` with a sliding auto-lock, master key zeroed after
+   decrypt (verified live: unlock → autofill on an HTTPS page in Edge).
+   **Next:** inline credential picker, save-password flow, passkey support
 5. ⬜ Recovery (recovery key + emergency-contact waiting period)
 6. ⬜ Breach monitoring via k-anonymity range queries
 

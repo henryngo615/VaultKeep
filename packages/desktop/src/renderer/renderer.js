@@ -115,12 +115,22 @@ function showVault() {
   lockView.classList.add("hidden");
   vaultView.classList.remove("hidden");
   setStatus("Unlocked", true);
+  // Offer "disable biometrics" only while actually enrolled.
+  window.vault.bioStatus().then((s) => {
+    $("bioOffBtn").classList.toggle("hidden", !s.enrolled);
+  });
   refresh();
 }
 
 // Surface biometric options if the OS supports them.
+let bioAvailable = false;
 (async () => {
   const s = await window.vault.bioStatus();
+  bioAvailable = s.available;
+  const label = s.platform === "darwin" ? "Touch ID" : s.platform === "win32" ? "Windows Hello" : "biometrics";
+  $("bioBtn").textContent = `Unlock with ${label}`;
+  $("enrollLabel").textContent = `Enable ${label} unlock`;
+  $("bioOffBtn").title = `Disable ${label} unlock (wipes the wrapped key)`;
   if (s.enrolled) $("bioBtn").classList.remove("hidden");
   if (s.available) $("enrollRow").classList.remove("hidden");
 })();
@@ -164,7 +174,9 @@ $("unlockBtn").onclick = async () => {
   const pw = $("master").value;
   const res = await window.vault.unlock(pw);
   if (res.ok) {
-    if ($("enrollChk").checked) await window.vault.bioEnroll(pw);
+    // Opt-in AFTER unlock: main wraps a copy of the derived key behind the OS
+    // keystore. The password plays no part and never re-crosses IPC.
+    if ($("enrollChk").checked) await window.vault.bioEnroll();
     $("master").value = "";
     showVault();
   } else {
@@ -219,7 +231,19 @@ $("loginBtn").onclick = async () => {
 $("bioBtn").onclick = async () => {
   const res = await window.vault.bioUnlock();
   if (res.ok) showVault();
-  else $("lockErr").textContent = res.error;
+  else {
+    $("lockErr").textContent = res.error;
+    // A wiped/stale enrollment hides the button until re-enrolled.
+    const s = await window.vault.bioStatus();
+    $("bioBtn").classList.toggle("hidden", !s.enrolled);
+  }
+};
+
+$("bioOffBtn").onclick = async () => {
+  await window.vault.bioUnenroll();
+  $("bioOffBtn").classList.add("hidden");
+  $("bioBtn").classList.add("hidden");
+  setStatus("Biometric unlock disabled", true);
 };
 
 $("lockBtn").onclick = async () => {

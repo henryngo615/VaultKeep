@@ -128,7 +128,11 @@ that signature and cannot mint approvals itself.
 3. ✅ Desktop app core (Electron): master-password unlock, encrypted-at-rest
    local vault, two-way sync with conflict handling, password generator. The
    GUI shell (main/preload/renderer) is wired over IPC so the renderer never
-   touches the key. **Next:** Touch ID / Windows Hello unlock, then mobile.
+   touches the key — plus **Touch ID / Windows Hello unlock**: a copy of the
+   derived master key (never the password) is wrapped by the OS keystore
+   (Keychain / DPAPI) and gated behind a real biometric prompt (WinRT
+   `UserConsentVerifier` on Windows); disabling wipes the wrapped key, and a
+   stale key is rejected by the GCM tag. **Next:** mobile.
 4. ✅ Browser extension autofill engine: field classifier, origin-scoped
    matcher, and a fill planner that refuses to write passwords on look-alike
    domains or non-HTTPS pages. **Next:** popup unlock wired to crypto/sync,

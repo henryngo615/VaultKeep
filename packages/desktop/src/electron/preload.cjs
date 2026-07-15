@@ -17,7 +17,9 @@ contextBridge.exposeInMainWorld("vault", {
   genPassword: (opts) => ipcRenderer.invoke("gen:password", opts),
   genPassphrase: (words) => ipcRenderer.invoke("gen:passphrase", words),
   bioStatus: () => ipcRenderer.invoke("bio:available"),
-  bioEnroll: (pw) => ipcRenderer.invoke("bio:enroll", pw),
+  // No password crosses this bridge for biometrics: the main process wraps a
+  // copy of the already-derived key.
+  bioEnroll: () => ipcRenderer.invoke("bio:enroll"),
   bioUnlock: () => ipcRenderer.invoke("bio:unlock"),
   bioUnenroll: () => ipcRenderer.invoke("bio:unenroll"),
 });

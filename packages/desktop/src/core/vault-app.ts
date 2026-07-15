@@ -41,15 +41,34 @@ export class VaultApp {
   /** Derive the master key and decrypt the local vault into memory. */
   async unlock(masterPassword: string): Promise<void> {
     const key = await deriveMasterKey(masterPassword, this.saltB64, this.kdf);
+    await this.unlockWithKey(key);
+  }
+
+  /**
+   * Unlock with an already-derived master key (biometric unlock: the wrapped
+   * key from the OS keystore). Same GCM gate as the password path — a wrong
+   * key makes decrypt() throw, so a stale wrapped key can't open the vault.
+   */
+  async unlockWithKey(key: Buffer): Promise<void> {
+    if (key.length !== 32) throw new Error("master key must be 32 bytes");
     const raw = await this.store.readRaw();
     if (raw) {
-      // A wrong password makes decrypt() throw (GCM auth tag) -> reject unlock.
+      // A wrong key makes decrypt() throw (GCM auth tag) -> reject unlock.
       const state = JSON.parse(decrypt(key, raw)) as PersistedState;
       for (const item of state.items) this.items.set(item.id, item);
       for (const m of state.meta)
         this.meta.set(m.id, { version: m.version, dirty: m.dirty });
     }
     this.key = key;
+  }
+
+  /**
+   * A COPY of the live master key, for wrapping behind the OS keystore when
+   * the user enables biometric unlock. Main-process only — never crosses IPC.
+   * The caller owns the copy and must zero it after wrapping.
+   */
+  snapshotKey(): Buffer {
+    return Buffer.from(this.requireKey());
   }
 
   /** Wipe the key and plaintext from memory. */

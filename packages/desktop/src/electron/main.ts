@@ -19,6 +19,7 @@ import {
   type SecureEnclave,
   type TokenStore,
 } from "../core/biometric.js";
+import { helloAvailable, helloPrompt } from "./windows-hello.js";
 import {
   generateSalt,
   generatePassword,
@@ -38,11 +39,21 @@ let session: Session | null = null;
 
 // --- Electron-backed adapters for the tested core interfaces ---------------
 
-/** Touch ID (macOS) / Windows Hello via Electron's secure-enclave APIs. */
+/**
+ * Touch ID (macOS) / Windows Hello (Windows). safeStorage (Keychain / DPAPI)
+ * wraps the key at rest; the platform's biometric prompt gates every unwrap.
+ * Available only when BOTH parts exist — a machine without a biometric
+ * verifier falls back to the master password, never to a silent unwrap.
+ */
 const electronEnclave: SecureEnclave = {
-  isAvailable: () => safeStorage.isEncryptionAvailable(),
+  isAvailable: async () => {
+    if (!safeStorage.isEncryptionAvailable()) return false;
+    if (process.platform === "darwin") return systemPreferences.canPromptTouchID();
+    if (process.platform === "win32") return helloAvailable();
+    return false;
+  },
   promptUser: async (reason) => {
-    if (process.platform === "darwin" && systemPreferences.canPromptTouchID()) {
+    if (process.platform === "darwin") {
       try {
         await systemPreferences.promptTouchID(reason);
         return true;
@@ -50,8 +61,8 @@ const electronEnclave: SecureEnclave = {
         return false;
       }
     }
-    // Windows Hello / other: safeStorage gates on the logged-in OS user.
-    return true;
+    if (process.platform === "win32") return helloPrompt(reason);
+    return false;
   },
   encrypt: (s) => safeStorage.encryptString(s).toString("base64"),
   decrypt: (c) => safeStorage.decryptString(Buffer.from(c, "base64")),
@@ -109,11 +120,25 @@ async function buildApp(): Promise<VaultApp> {
     await mkdir(dir, { recursive: true });
     storePath = join(dir, `${session.userId}.enc`);
   }
+  activeContext = { saltB64: salt, userId: session?.userId ?? null };
   const store = new FileStore(storePath, {
     readFile: (p) => readFile(p, "utf8"),
     writeFile: (p, d) => writeFile(p, d),
   });
   return new VaultApp(salt, store, transport, session?.kdf);
+}
+
+/** The salt/account the current appCore was built for — what enrolls with the key. */
+let activeContext: { saltB64: string; userId: string | null } | null = null;
+
+/** A VaultApp for the vault a wrapped key belongs to (offline, no session). */
+async function buildAppFor(userId: string | null, saltB64: string): Promise<VaultApp> {
+  const storePath = userId ? join(VAULT_DIR, "vaults", `${userId}.enc`) : STORE_PATH;
+  const store = new FileStore(storePath, {
+    readFile: (p) => readFile(p, "utf8"),
+    writeFile: (p, d) => writeFile(p, d),
+  });
+  return new VaultApp(saltB64, store, null);
 }
 
 async function loadDevice(): Promise<DeviceIdentity | null> {
@@ -238,34 +263,52 @@ ipcMain.handle(
 // --- Biometric unlock (Touch ID / Windows Hello) ---------------------------
 
 ipcMain.handle("bio:available", async () => ({
-  available: electronEnclave.isAvailable(),
+  available: await electronEnclave.isAvailable(),
   enrolled: await biometric.isEnrolled(),
+  platform: process.platform,
 }));
 
-/** Opt in after a successful password unlock. */
-ipcMain.handle("bio:enroll", async (_e, masterPassword: string) => {
+/**
+ * Opt in after a successful unlock: wrap a COPY of the live master key (plus
+ * the salt/account it belongs to) behind the OS keystore. No password is
+ * stored in any form; the copy is zeroed as soon as it's wrapped.
+ */
+ipcMain.handle("bio:enroll", async () => {
+  if (!appCore?.isUnlocked || !activeContext) {
+    return { ok: false, error: "unlock the vault first" };
+  }
+  const key = appCore.snapshotKey();
   try {
-    await biometric.enroll(masterPassword);
+    await biometric.enroll(key, activeContext.saltB64, activeContext.userId);
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: String(e) };
+    return { ok: false, error: String((e as Error).message ?? e) };
+  } finally {
+    key.fill(0);
   }
 });
 
-/** Prompt biometrics, recover the password, and unlock — no typing required. */
+/** Prompt biometrics, unwrap the key, and unlock — no password, no KDF wait. */
 ipcMain.handle("bio:unlock", async () => {
-  const pw = await biometric.recoverPassword("Unlock VaultKeep");
-  if (!pw) return { ok: false, error: "Biometric unlock unavailable or declined" };
-  appCore = await buildApp();
+  const recovered = await biometric.recoverKey("Unlock VaultKeep");
+  if (!recovered) return { ok: false, error: "Biometric unlock unavailable or declined" };
+  session = null; // offline unlock of the enrolled vault
+  const app = await buildAppFor(recovered.userId, recovered.saltB64);
   try {
-    await appCore.unlock(pw);
+    await app.unlockWithKey(recovered.key);
+    appCore = app;
+    activeContext = { saltB64: recovered.saltB64, userId: recovered.userId };
     return { ok: true };
   } catch {
+    // The vault was re-keyed since enrollment — wipe the stale wrapped key.
+    recovered.key.fill(0);
+    await biometric.unenroll();
     appCore = null;
-    return { ok: false, error: "Stored credential no longer valid" };
+    return { ok: false, error: "Stored key no longer matches this vault — unlock with your master password and re-enable biometrics" };
   }
 });
 
+/** Opt out: wipe the wrapped key from the OS keystore. */
 ipcMain.handle("bio:unenroll", async () => {
   await biometric.unenroll();
   return { ok: true };

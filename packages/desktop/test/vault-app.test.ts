@@ -1,11 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { VaultApp } from "../src/core/vault-app.js";
 import { MemoryStore, FileStore } from "../src/core/local-store.js";
-import {
-  BiometricUnlock,
-  type SecureEnclave,
-  type TokenStore,
-} from "../src/core/biometric.js";
 import type { Transport, RemoteItem, PushOutcome } from "../src/core/sync-client.js";
 import { generateSalt } from "@vaultkeep/crypto";
 import { VaultService } from "@vaultkeep/server/vault/vault.service.js";
@@ -150,60 +145,6 @@ describe("FileStore persistence (key-free, single blob)", () => {
   });
 });
 
-describe("BiometricUnlock (Touch ID / Windows Hello)", () => {
-  // A fake enclave: "encryption" is reversible tagging; prompt result is scripted.
-  function fakeEnclave(opts: { available: boolean; pass: boolean }): SecureEnclave {
-    return {
-      isAvailable: () => opts.available,
-      promptUser: async () => opts.pass,
-      encrypt: (s) => "enc(" + Buffer.from(s).toString("base64") + ")",
-      decrypt: (c) => {
-        const m = /^enc\((.*)\)$/.exec(c);
-        if (!m) throw new Error("bad token");
-        return Buffer.from(m[1], "base64").toString();
-      },
-    };
-  }
-  function memTokens(): TokenStore {
-    let t: string | null = null;
-    return {
-      read: async () => t,
-      write: async (v) => void (t = v),
-      clear: async () => void (t = null),
-    };
-  }
-
-  it("enrolls and recovers the master password after a passing prompt", async () => {
-    const bio = new BiometricUnlock(fakeEnclave({ available: true, pass: true }), memTokens());
-    expect(await bio.isEnrolled()).toBe(false);
-    await bio.enroll("hunter2");
-    expect(await bio.isEnrolled()).toBe(true);
-    expect(await bio.recoverPassword()).toBe("hunter2");
-  });
-
-  it("returns null when the biometric prompt is declined", async () => {
-    const bio = new BiometricUnlock(fakeEnclave({ available: true, pass: false }), memTokens());
-    await bio.enroll("hunter2");
-    expect(await bio.recoverPassword()).toBeNull();
-  });
-
-  it("never stores the plaintext password in the token", async () => {
-    const tokens = memTokens();
-    const bio = new BiometricUnlock(fakeEnclave({ available: true, pass: true }), tokens);
-    await bio.enroll("super-secret-pw");
-    expect(await tokens.read()).not.toContain("super-secret-pw");
-  });
-
-  it("refuses to enroll when no secure enclave is present", async () => {
-    const bio = new BiometricUnlock(fakeEnclave({ available: false, pass: true }), memTokens());
-    await expect(bio.enroll("pw")).rejects.toThrow();
-  });
-
-  it("forgets the credential on unenroll", async () => {
-    const bio = new BiometricUnlock(fakeEnclave({ available: true, pass: true }), memTokens());
-    await bio.enroll("pw");
-    await bio.unenroll();
-    expect(await bio.isEnrolled()).toBe(false);
-    expect(await bio.recoverPassword()).toBeNull();
-  });
-});
+// BiometricUnlock has its own suite in test/biometric.test.ts (wrapped-key
+// design: enroll/unlock, declined prompt, unavailable hardware, tampered or
+// stale wrapped keys, unenroll wiping the keystore).

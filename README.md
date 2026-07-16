@@ -47,7 +47,7 @@ Master Password ──Argon2id(256MiB,t=4,p=4)──▶ 256-bit key
 | `packages/crypto` | KDF, AES-256-GCM, device keys, generator | ✅ **implemented + tested** |
 | `packages/shared` | Shared TypeScript types | ✅ implemented |
 | `packages/server` | Sync API, zero-knowledge auth, devices, TOTP, Prisma adapters | ✅ **implemented + tested** (in-memory store; Prisma adapters ready for the prod swap) |
-| `packages/extension` | MV3 browser extension | ✅ **autofill engine implemented + tested**; popup/session UI stubbed |
+| `packages/extension` | MV3 browser extension | ✅ **autofill engine + popup unlock/sync implemented + tested** |
 | `packages/desktop` | Electron desktop (Mac/Win) | ✅ **app core implemented + tested**; Electron GUI shell included |
 | `packages/mobile` | Flutter mobile (iOS/Android) | ⬜ scaffold |
 
@@ -75,8 +75,18 @@ The suite proves the security-critical properties:
 ```bash
 cd packages/server
 npm install
-npm test       # 32 tests: sync, JWT, guard, TOTP, accounts, device trust
-npm run dev    # boots http://localhost:8787 (in-memory, zero setup)
+npm test       # 51 tests: sync, JWT, guard, TOTP, accounts, device trust,
+               # plus an integration suite against a real (embedded) Postgres
+npm run dev    # boots http://localhost:8787 (file-backed, zero setup)
+```
+
+To run on Postgres instead of the JSON file store:
+
+```bash
+docker compose up -d                 # in packages/server
+export DATABASE_URL=postgresql://vaultkeep:vaultkeep@localhost:5432/vaultkeep
+npm run db:generate && npm run db:migrate
+npm run dev
 ```
 
 Real zero-knowledge auth flow (the server never receives the master password):
@@ -123,8 +133,14 @@ that signature and cannot mint approvals itself.
    **passkey-style device auth** (FIDO2/WebAuthn challenge–response: the server
    issues a single-use challenge, the device signs it with its Ed25519 key, the
    server verifies — phishing-resistant, enables passwordless "sign in with this
-   device"), and **Prisma/Postgres adapters** for all repositories.
-   **Next:** run the Prisma adapters against a live DB; browser-native WebAuthn
+   device"), **Prisma/Postgres storage** for all repositories — set
+   `DATABASE_URL` and the server runs on Postgres (committed migration,
+   docker-compose for dev, integration tests against a real embedded Postgres),
+   and **browser-native WebAuthn passkeys** (dependency-free CBOR/COSE
+   ceremonies: origin + rpId validation, single-use expiring challenges,
+   sign-count clone detection; the web vault registers a platform passkey with
+   `navigator.credentials.create()` and uses it as the MFA step — verified in a
+   real browser with a virtual authenticator).
 3. ✅ Desktop app core (Electron): master-password unlock, encrypted-at-rest
    local vault, two-way sync with conflict handling, password generator. The
    GUI shell (main/preload/renderer) is wired over IPC so the renderer never
@@ -135,8 +151,12 @@ that signature and cannot mint approvals itself.
    stale key is rejected by the GCM tag. **Next:** mobile.
 4. ✅ Browser extension autofill engine: field classifier, origin-scoped
    matcher, and a fill planner that refuses to write passwords on look-alike
-   domains or non-HTTPS pages. **Next:** popup unlock wired to crypto/sync,
-   passkey support
+   domains or non-HTTPS pages — plus **real popup unlock**: Argon2id (same
+   WASM as the crypto core) → zero-knowledge login with TOTP → WebCrypto
+   AES-GCM decryption of the synced vault, session in memory-only
+   `chrome.storage.session` with a sliding auto-lock, master key zeroed after
+   decrypt (verified live: unlock → autofill on an HTTPS page in Edge).
+   **Next:** inline credential picker, save-password flow, passkey support
 5. ⬜ Recovery (recovery key + emergency-contact waiting period)
 6. ⬜ Breach monitoring via k-anonymity range queries
 

@@ -12,12 +12,16 @@
 import type { VaultRepository, StoredItem } from "../vault/vault.repository.js";
 import type { AccountRepository, AccountRecord } from "../auth/account.repository.js";
 import type { DeviceRepository, DeviceRecord } from "../devices/device.service.js";
+import type { MfaRepository, MfaRecord } from "../mfa/mfa.service.js";
+import type { PasskeyRepository, PasskeyRecord } from "../auth/passkey.service.js";
 
 // Minimal structural type for the generated PrismaClient we depend on.
 interface PrismaLike {
   vaultItem: any;
   user: any;
   device: any;
+  mfaMethod: any;
+  passkeyCredential: any;
 }
 
 export class PrismaVaultRepository implements VaultRepository {
@@ -36,8 +40,10 @@ export class PrismaVaultRepository implements VaultRepository {
   }
 
   async put(item: StoredItem): Promise<void> {
+    // Composite key: item ids are only unique per user, so scoping the upsert
+    // to (userId, id) makes cross-tenant overwrites impossible.
     await this.db.vaultItem.upsert({
-      where: { id: item.id },
+      where: { userId_id: { userId: item.userId, id: item.id } },
       create: {
         id: item.id,
         userId: item.userId,
@@ -65,18 +71,23 @@ export class PrismaAccountRepository implements AccountRepository {
     return row ? toAccount(row) : null;
   }
   async create(rec: AccountRecord): Promise<void> {
-    await this.db.user.create({
-      data: {
-        id: rec.id,
-        email: rec.email.toLowerCase(),
-        kdfSalt: rec.kdfSalt,
-        kdfMemoryKiB: rec.kdfMemoryKiB,
-        kdfIterations: rec.kdfIterations,
-        kdfParallel: rec.kdfParallel,
-        // authHash stored in a dedicated column (add to schema before deploy).
-        authHash: rec.authHash,
-      },
-    });
+    try {
+      await this.db.user.create({
+        data: {
+          id: rec.id,
+          email: rec.email.toLowerCase(),
+          kdfSalt: rec.kdfSalt,
+          kdfMemoryKiB: rec.kdfMemoryKiB,
+          kdfIterations: rec.kdfIterations,
+          kdfParallel: rec.kdfParallel,
+          authHash: rec.authHash,
+        },
+      });
+    } catch (e: any) {
+      // P2002 = unique violation on email; keep the in-memory repo's contract.
+      if (e?.code === "P2002") throw new Error("email already registered");
+      throw e;
+    }
   }
 }
 
@@ -95,6 +106,45 @@ export class PrismaDeviceRepository implements DeviceRepository {
   }
   async setApproved(userId: string, deviceId: string, approved: boolean): Promise<void> {
     await this.db.device.updateMany({ where: { id: deviceId, userId }, data: { approved } });
+  }
+}
+
+export class PrismaMfaRepository implements MfaRepository {
+  constructor(private readonly db: PrismaLike) {}
+
+  async get(userId: string): Promise<MfaRecord | null> {
+    const row = await this.db.mfaMethod.findUnique({
+      where: { userId_kind: { userId, kind: "totp" } },
+    });
+    return row ? { userId: row.userId, secret: row.secret, confirmed: row.confirmed } : null;
+  }
+
+  async upsert(rec: MfaRecord): Promise<void> {
+    await this.db.mfaMethod.upsert({
+      where: { userId_kind: { userId: rec.userId, kind: "totp" } },
+      create: { userId: rec.userId, kind: "totp", secret: rec.secret, confirmed: rec.confirmed },
+      update: { secret: rec.secret, confirmed: rec.confirmed },
+    });
+  }
+}
+
+export class PrismaPasskeyRepository implements PasskeyRepository {
+  constructor(private readonly db: PrismaLike) {}
+
+  async listForUser(userId: string): Promise<PasskeyRecord[]> {
+    return (await this.db.passkeyCredential.findMany({ where: { userId } })).map(toPasskey);
+  }
+  async get(credentialId: string): Promise<PasskeyRecord | null> {
+    const row = await this.db.passkeyCredential.findUnique({ where: { credentialId } });
+    return row ? toPasskey(row) : null;
+  }
+  async create(rec: PasskeyRecord): Promise<void> {
+    await this.db.passkeyCredential.create({
+      data: { ...rec, createdAt: new Date(rec.createdAt) },
+    });
+  }
+  async updateSignCount(credentialId: string, signCount: number): Promise<void> {
+    await this.db.passkeyCredential.update({ where: { credentialId }, data: { signCount } });
   }
 }
 
@@ -118,6 +168,17 @@ function toAccount(r: any): AccountRecord {
     kdfIterations: r.kdfIterations,
     kdfParallel: r.kdfParallel,
     authHash: r.authHash,
+    createdAt: (r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)).toISOString(),
+  };
+}
+function toPasskey(r: any): PasskeyRecord {
+  return {
+    credentialId: r.credentialId,
+    userId: r.userId,
+    publicKeyJwk: r.publicKeyJwk,
+    alg: r.alg,
+    signCount: r.signCount,
+    name: r.name,
     createdAt: (r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)).toISOString(),
   };
 }

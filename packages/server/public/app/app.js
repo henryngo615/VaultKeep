@@ -100,13 +100,27 @@ $("enrollBtn").onclick = async () => {
 };
 
 // ---- Login ----
-$("loginBtn").onclick = async () => {
+// Base64url helpers for WebAuthn's ArrayBuffer fields.
+function b64url(buf) {
+  return btoa(String.fromCharCode(...new Uint8Array(buf)))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function fromB64url(s) {
+  const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+}
+
+/**
+ * Shared first factor: derive key + verifier locally (the password never
+ * leaves the browser) and exchange the verifier for a PRE-MFA token.
+ * Returns null (with the error shown) on failure.
+ */
+async function passwordLogin() {
   const email = $("li_email").value.trim();
   const pw = $("li_pw").value;
-  const code = $("li_code").value.trim();
-  if (!email || !pw) return setErr($("authErr"), "Email and password required");
+  if (!email || !pw) return setErr($("authErr"), "Email and password required"), null;
   const device = loadDevice(email);
-  if (!device) return setErr($("authErr"), "No device for this email in this browser. Create the account here first.");
+  if (!device) return setErr($("authErr"), "No device for this email in this browser. Create the account here first."), null;
   setErr($("authErr"), "Signing in…");
 
   // Fetch KDF params, derive key + verifier locally (same Argon2id as desktop).
@@ -120,15 +134,94 @@ $("loginBtn").onclick = async () => {
   const authVerifier = await VC.deriveAuthVerifier(keyBits, pw);
 
   const login = await api("/auth/login", { method: "POST", body: { email, authVerifier, deviceId: device.deviceId } });
-  if (login.status !== 200) return setErr($("authErr"), login.data.error || "Invalid credentials");
+  if (login.status !== 200) return setErr($("authErr"), login.data.error || "Invalid credentials"), null;
+  return { email, preToken: login.data.token, userId: login.data.userId, key: k };
+}
 
-  const mfa = await api("/auth/mfa", { method: "POST", body: { token: login.data.token, code } });
+function finishLogin(pre, fullToken) {
+  session = { token: fullToken, userId: pre.userId, email: pre.email };
+  aesKey = pre.key;
+  return loadVault().then(showVault);
+}
+
+$("loginBtn").onclick = async () => {
+  const code = $("li_code").value.trim();
+  const pre = await passwordLogin();
+  if (!pre) return;
+  const mfa = await api("/auth/mfa", { method: "POST", body: { token: pre.preToken, code } });
   if (mfa.status !== 200) return setErr($("authErr"), mfa.data.error || "Invalid 2FA code");
+  await finishLogin(pre, mfa.data.token);
+};
 
-  session = { token: mfa.data.token, userId: login.data.userId, email };
-  aesKey = k;
-  await loadVault();
-  showVault();
+// ---- Passkey as the second factor (browser-native WebAuthn) ----
+$("passkeyBtn").onclick = async () => {
+  const pre = await passwordLogin();
+  if (!pre) return;
+  const opt = await api("/auth/passkey/mfa/options", { method: "POST", body: { token: pre.preToken } });
+  if (opt.status === 404) return setErr($("authErr"), "No passkey on this account yet — sign in with a code, then use “Add passkey”.");
+  if (opt.status !== 200) return setErr($("authErr"), opt.data.error || "Passkey sign-in unavailable");
+  const pub = opt.data.options;
+  let cred;
+  try {
+    cred = await navigator.credentials.get({
+      publicKey: {
+        challenge: fromB64url(pub.challenge),
+        rpId: pub.rpId,
+        allowCredentials: pub.allowCredentials.map((c) => ({ type: "public-key", id: fromB64url(c.id) })),
+        userVerification: pub.userVerification,
+        timeout: pub.timeout,
+      },
+    });
+  } catch {
+    return setErr($("authErr"), "Passkey prompt was cancelled.");
+  }
+  const v = await api("/auth/passkey/mfa/verify", {
+    method: "POST",
+    body: {
+      token: pre.preToken,
+      credentialId: cred.id,
+      clientDataJSON: b64url(cred.response.clientDataJSON),
+      authenticatorData: b64url(cred.response.authenticatorData),
+      signature: b64url(cred.response.signature),
+    },
+  });
+  if (v.status !== 200) return setErr($("authErr"), v.data.error || "Passkey verification failed");
+  await finishLogin(pre, v.data.token);
+};
+
+// ---- Register a passkey for the signed-in account ----
+$("addPasskeyBtn").onclick = async () => {
+  const btn = $("addPasskeyBtn");
+  const opt = await api("/auth/passkey/register/options", { method: "POST", token: session.token });
+  if (opt.status !== 200) return alert(opt.data.error || "Could not start passkey registration");
+  const pub = opt.data.options;
+  let cred;
+  try {
+    cred = await navigator.credentials.create({
+      publicKey: {
+        challenge: fromB64url(pub.challenge),
+        rp: pub.rp,
+        user: { id: fromB64url(pub.user.id), name: pub.user.name, displayName: pub.user.displayName },
+        pubKeyCredParams: pub.pubKeyCredParams,
+        excludeCredentials: pub.excludeCredentials.map((c) => ({ type: "public-key", id: fromB64url(c.id) })),
+        authenticatorSelection: pub.authenticatorSelection,
+        attestation: pub.attestation,
+        timeout: pub.timeout,
+      },
+    });
+  } catch {
+    return; // user cancelled the platform prompt
+  }
+  const v = await api("/auth/passkey/register/verify", {
+    method: "POST", token: session.token,
+    body: {
+      clientDataJSON: b64url(cred.response.clientDataJSON),
+      attestationObject: b64url(cred.response.attestationObject),
+    },
+  });
+  const old = btn.textContent;
+  btn.textContent = v.status === 201 ? "✓ Passkey added" : "✗ " + (v.data.reason || "failed");
+  setTimeout(() => (btn.textContent = old), 2500);
 };
 
 $("logoutBtn").onclick = () => {

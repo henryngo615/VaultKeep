@@ -15,6 +15,11 @@
     "build": "npm run build --workspaces --if-present"
   },
   "allowScripts": {
-    "electron@43.1.1": true
+    "@embedded-postgres/windows-x64@18.4.0-beta.17": true,
+    "@prisma/client@7.8.0": true,
+    "@prisma/engines@7.8.0": true,
+    "electron@43.1.1": true,
+    "embedded-postgres@18.4.0-beta.17": true,
+    "prisma@7.8.0": true
   }
 }

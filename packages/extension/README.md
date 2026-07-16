@@ -39,6 +39,31 @@ content.ts (DOM)  applies writes, fires input/change events
 - the text field before a password is recognized as the username
 - OTP fields are never auto-written
 
+## Unlock & sync (implemented)
+
+The popup unlocks a real vault end-to-end: `/auth/kdf` → **Argon2id** in the
+worker (hash-wasm — the same WASM the crypto core uses, so keys are
+byte-identical) → auth verifier → login (self-enrolling this browser as a
+device on first use) → **TOTP** → pull `/vault/items` → **WebCrypto AES-GCM**
+decrypt locally.
+
+| Module | Role |
+|---|---|
+| `vaultcrypto.ts` | browser port of `@vaultkeep/crypto` (KDF, verifier, GCM decrypt) |
+| `sync.ts` | thin sync-API client (injectable fetch) |
+| `unlock.ts` | the unlock orchestration; **zeroes the key in `finally`** |
+| `session.ts` | session cache with sliding auto-lock (5 min) |
+
+Session storage is `chrome.storage.session` — memory-only, never written to
+disk, wiped when the browser closes. The master key is never stored anywhere:
+it exists only inside `unlockVault()` and is zeroed the moment the vault is
+decrypted. Rows that fail GCM verification are skipped, never shown.
+
+`test/unlock.test.ts` (15 tests) proves byte-compatibility with the shared
+crypto core, wrong-key/tamper rejection via the GCM auth tag, the unlock
+orchestration (wrong password, wrong TOTP, unapproved device), and the
+auto-lock lifecycle.
+
 ## Build & load
 
 ```bash
@@ -52,7 +77,6 @@ depth against autofill on plaintext pages.
 
 ## Roadmap
 
-- Wire the popup unlock to `@vaultkeep/crypto` + the sync client so
-  `session:set` carries real decrypted credentials
 - Inline credential picker when multiple matches exist
+- "Save password?" flow writing back to the vault
 - Passkey (WebAuthn) create/get support

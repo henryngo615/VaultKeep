@@ -95,6 +95,22 @@
           <input id="li_code" placeholder="6-digit authenticator code" />
           <button id="loginBtn" class="w100" style="margin-top:8px">Sign in</button>
           <button id="passkeyBtn" class="w100 ghost" style="margin-top:8px">🔑 Sign in with a passkey instead of a code</button>
+          <p class="muted" style="margin-top:12px; text-align:center">
+            <a id="forgotLink" href="#" style="color:#c4b5fd">Forgot your master password?</a>
+          </p>
+        </div>
+
+        <div id="recPane" class="hidden">
+          <h1>Recover your vault</h1>
+          <p class="muted">Enter the recovery key you saved at setup. The server only checks a hash — unwrapping happens right here in your browser.</p>
+          <input id="rc_email" type="email" placeholder="Email" />
+          <input id="rc_key" placeholder="Recovery key (VK-XXXXX-…)" autocomplete="off" />
+          <input id="rc_newpw" type="password" placeholder="New master password" />
+          <input id="rc_code" placeholder="6-digit authenticator code" />
+          <button id="recoverBtn" class="w100" style="margin-top:8px">Recover &amp; set new password</button>
+          <p class="muted" style="margin-top:12px; text-align:center">
+            <a id="recBackLink" href="#" style="color:#c4b5fd">← Back to sign in</a>
+          </p>
         </div>
 
         <div id="regPane" class="hidden">
@@ -128,6 +144,17 @@
         <button id="addPasskeyBtn" class="ghost" title="Register this device's passkey for MFA">🔑 Add passkey</button>
       </div>
       <div id="list"></div>
+    </div>
+
+    <!-- RECOVERY KEY MODAL (shown once — the key is never stored anywhere) -->
+    <div id="rkModal" class="modal-bg hidden">
+      <div class="card modal">
+        <h2 style="margin-bottom:10px">🧯 Your recovery key</h2>
+        <p class="muted">This is the <b>only</b> way back in if you forget your master password. Write it down or store it somewhere safe — it will not be shown again, and the server can't read it.</p>
+        <p style="text-align:center; margin:16px 0"><code id="rkValue" style="font-size:15px; color:#c4b5fd; letter-spacing:1px"></code></p>
+        <button id="rkCopy" class="w100 ghost" style="margin-bottom:8px">Copy to clipboard</button>
+        <button id="rkDone" class="w100">I've saved it — continue</button>
+      </div>
     </div>
 
     <!-- ADD MODAL -->

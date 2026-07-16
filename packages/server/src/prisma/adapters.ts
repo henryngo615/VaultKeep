@@ -14,6 +14,9 @@ import type { AccountRepository, AccountRecord } from "../auth/account.repositor
 import type { DeviceRepository, DeviceRecord } from "../devices/device.service.js";
 import type { MfaRepository, MfaRecord } from "../mfa/mfa.service.js";
 import type { PasskeyRepository, PasskeyRecord } from "../auth/passkey.service.js";
+import type {
+  RecoveryRepository, RecoveryRecord, EmergencyContactRecord,
+} from "../recovery/recovery.service.js";
 
 // Minimal structural type for the generated PrismaClient we depend on.
 interface PrismaLike {
@@ -22,6 +25,8 @@ interface PrismaLike {
   device: any;
   mfaMethod: any;
   passkeyCredential: any;
+  recoveryKey: any;
+  emergencyContact: any;
 }
 
 export class PrismaVaultRepository implements VaultRepository {
@@ -89,6 +94,9 @@ export class PrismaAccountRepository implements AccountRepository {
       throw e;
     }
   }
+  async updateAuthHash(id: string, authHash: string): Promise<void> {
+    await this.db.user.update({ where: { id }, data: { authHash } });
+  }
 }
 
 export class PrismaDeviceRepository implements DeviceRepository {
@@ -148,7 +156,75 @@ export class PrismaPasskeyRepository implements PasskeyRepository {
   }
 }
 
+export class PrismaRecoveryRepository implements RecoveryRepository {
+  constructor(private readonly db: PrismaLike) {}
+
+  async getRecovery(userId: string): Promise<RecoveryRecord | null> {
+    const row = await this.db.recoveryKey.findUnique({ where: { userId } });
+    return row
+      ? {
+          userId: row.userId,
+          verifierHash: row.verifierHash,
+          wrappedKey: row.wrappedKey,
+          createdAt: toIso(row.createdAt),
+        }
+      : null;
+  }
+  async upsertRecovery(rec: RecoveryRecord): Promise<void> {
+    const data = {
+      verifierHash: rec.verifierHash,
+      wrappedKey: rec.wrappedKey,
+      createdAt: new Date(rec.createdAt),
+    };
+    await this.db.recoveryKey.upsert({
+      where: { userId: rec.userId },
+      create: { userId: rec.userId, ...data },
+      update: data,
+    });
+  }
+  async listContacts(userId: string): Promise<EmergencyContactRecord[]> {
+    return (await this.db.emergencyContact.findMany({ where: { userId } })).map(toContact);
+  }
+  async getContact(id: string): Promise<EmergencyContactRecord | null> {
+    const row = await this.db.emergencyContact.findUnique({ where: { id } });
+    return row ? toContact(row) : null;
+  }
+  async createContact(rec: EmergencyContactRecord): Promise<void> {
+    await this.db.emergencyContact.create({
+      data: {
+        ...rec,
+        unlockAt: rec.unlockAt ? new Date(rec.unlockAt) : null,
+        createdAt: new Date(rec.createdAt),
+      },
+    });
+  }
+  async updateContact(rec: EmergencyContactRecord): Promise<void> {
+    await this.db.emergencyContact.update({
+      where: { id: rec.id },
+      data: { state: rec.state, unlockAt: rec.unlockAt ? new Date(rec.unlockAt) : null },
+    });
+  }
+}
+
 // --- row -> domain mappers --------------------------------------------------
+
+function toContact(r: any): EmergencyContactRecord {
+  return {
+    id: r.id,
+    userId: r.userId,
+    contactEmail: r.contactEmail,
+    contactSigningPublicKey: r.contactSigningPublicKey,
+    ephemeralPublicKey: r.ephemeralPublicKey,
+    wrappedKey: r.wrappedKey,
+    state: r.state,
+    unlockAt: r.unlockAt ? toIso(r.unlockAt) : null,
+    createdAt: toIso(r.createdAt),
+  };
+}
+
+function toIso(d: any): string {
+  return (d instanceof Date ? d : new Date(d)).toISOString();
+}
 
 function toStoredItem(r: any): StoredItem {
   return {

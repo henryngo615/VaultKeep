@@ -62,6 +62,11 @@ export class AccountService {
     return (await this.repo.findById(userId))?.email ?? null;
   }
 
+  /** User id for an email, or null. Callers must not leak this to clients. */
+  async idFor(email: string): Promise<string | null> {
+    return (await this.repo.findByEmail(email))?.id ?? null;
+  }
+
   /**
    * The public KDF params a client needs BEFORE login, so it can derive the
    * verifier with the same salt. Returns a decoy for unknown emails to avoid
@@ -79,6 +84,19 @@ export class AccountService {
     }
     // Deterministic decoy derived from the email so it's stable per-address.
     return { kdfSalt: decoySalt(email), kdfMemoryKiB: 65536, kdfIterations: 3, kdfParallel: 4 };
+  }
+
+  /**
+   * Replace the login verifier (recovery / password change). The caller is
+   * responsible for having authenticated the request — here that's a verified
+   * recovery key. Vault re-encryption is the CLIENT's job: the server only
+   * ever swaps one hash for another.
+   */
+  async resetVerifier(userId: string, newAuthVerifier: string): Promise<void> {
+    if (!newAuthVerifier || newAuthVerifier.length < 16) {
+      throw new Error("auth verifier too weak");
+    }
+    await this.repo.updateAuthHash(userId, await hashVerifier(newAuthVerifier));
   }
 
   /**

@@ -1,27 +1,31 @@
 /**
  * Biometric unlock (Touch ID on macOS, Windows Hello on Windows).
  *
- * The master password is NEVER stored in plaintext. After a successful
- * password unlock, the user may opt in: we encrypt the master password with the
- * OS secure enclave (Electron `safeStorage`, backed by the Keychain / DPAPI)
- * and persist that ciphertext. A later launch prompts for biometrics; only on
- * success do we decrypt it and feed it back into the normal unlock path.
+ * After a successful password unlock the user may opt in: we wrap a copy of
+ * the derived MASTER KEY (never the password) with the OS keystore (Electron
+ * `safeStorage`, backed by the Keychain / DPAPI) and persist that ciphertext
+ * together with the unlock context (salt + account) it belongs to. A later
+ * launch prompts for biometrics; only on success is the key unwrapped and fed
+ * to `VaultApp.unlockWithKey()`.
  *
- * The KDF still runs every unlock — biometrics gate access to the password,
- * they don't replace the zero-knowledge key derivation.
+ * Storing the wrapped key instead of the password means: no password material
+ * at rest in any form, and biometric unlock skips the Argon2id run entirely.
+ * Biometrics gate access to the wrapped key — the vault blob itself stays
+ * AES-256-GCM under that key, so a stolen wrapped blob without the OS
+ * keystore (or a stolen vault without the key) is useless.
  *
  * This module is platform-agnostic: the `SecureEnclave` and token storage are
  * injected, so the logic is fully unit-testable without Electron.
  */
 
 export interface SecureEnclave {
-  /** Is hardware-backed encryption available on this machine right now? */
-  isAvailable(): boolean;
-  /** Prompt the user for Touch ID / Hello. Resolves true if they pass. */
+  /** Is a biometric-gated keystore available on this machine right now? */
+  isAvailable(): Promise<boolean>;
+  /** Prompt the user for Touch ID / Windows Hello. Resolves true if they pass. */
   promptUser(reason: string): Promise<boolean>;
-  /** Encrypt with the OS enclave (Keychain / DPAPI). Returns base64. */
+  /** Encrypt with the OS keystore (Keychain / DPAPI). Returns base64. */
   encrypt(plaintext: string): string;
-  /** Decrypt enclave ciphertext. Throws if the blob is invalid. */
+  /** Decrypt keystore ciphertext. Throws if the blob is invalid. */
   decrypt(ciphertextB64: string): string;
 }
 
@@ -29,6 +33,14 @@ export interface TokenStore {
   read(): Promise<string | null>;
   write(token: string): Promise<void>;
   clear(): Promise<void>;
+}
+
+/** What biometric unlock needs to reopen the right vault with the right key. */
+export interface WrappedKey {
+  keyB64: string;
+  saltB64: string;
+  /** Account the key belongs to, or null for the local-only vault. */
+  userId: string | null;
 }
 
 export class BiometricUnlock {
@@ -39,32 +51,43 @@ export class BiometricUnlock {
 
   /** Whether biometric unlock is offered (hardware present + already enrolled). */
   async isEnrolled(): Promise<boolean> {
-    return this.enclave.isAvailable() && (await this.tokens.read()) !== null;
+    return (await this.enclave.isAvailable()) && (await this.tokens.read()) !== null;
   }
 
-  /** Opt in: remember the master password behind the secure enclave. */
-  async enroll(masterPassword: string): Promise<void> {
-    if (!this.enclave.isAvailable()) {
-      throw new Error("secure enclave unavailable on this device");
+  /** Opt in: wrap a copy of the master key behind the OS keystore. */
+  async enroll(key: Buffer, saltB64: string, userId: string | null): Promise<void> {
+    if (!(await this.enclave.isAvailable())) {
+      throw new Error("biometric keystore unavailable on this device");
     }
-    await this.tokens.write(this.enclave.encrypt(masterPassword));
+    const wrapped: WrappedKey = { keyB64: key.toString("base64"), saltB64, userId };
+    await this.tokens.write(this.enclave.encrypt(JSON.stringify(wrapped)));
   }
 
-  /** Opt out / on logout: forget the stored credential. */
+  /** Opt out / on logout: wipe the wrapped key from the keystore. */
   async unenroll(): Promise<void> {
     await this.tokens.clear();
   }
 
   /**
-   * Prompt for biometrics and, on success, recover the master password so the
-   * caller can run the normal `VaultApp.unlock(password)`. Returns null if not
-   * enrolled or the biometric prompt was declined/failed.
+   * Prompt for biometrics and, on success, unwrap the master key + its unlock
+   * context so the caller can run `VaultApp.unlockWithKey()`. Returns null if
+   * not enrolled or the biometric prompt was declined/failed. A wrapped blob
+   * that no longer decrypts (keystore reset, tampering) is wiped — the user
+   * falls back to the master password and can re-enroll.
    */
-  async recoverPassword(reason = "Unlock VaultKeep"): Promise<string | null> {
+  async recoverKey(reason = "Unlock VaultKeep"): Promise<{ key: Buffer; saltB64: string; userId: string | null } | null> {
     const token = await this.tokens.read();
-    if (!token || !this.enclave.isAvailable()) return null;
+    if (!token || !(await this.enclave.isAvailable())) return null;
     const passed = await this.enclave.promptUser(reason);
     if (!passed) return null;
-    return this.enclave.decrypt(token);
+    try {
+      const wrapped = JSON.parse(this.enclave.decrypt(token)) as WrappedKey;
+      const key = Buffer.from(wrapped.keyB64, "base64");
+      if (key.length !== 32) throw new Error("wrapped key malformed");
+      return { key, saltB64: wrapped.saltB64, userId: wrapped.userId };
+    } catch {
+      await this.tokens.clear(); // stale/corrupt enrollment — password fallback
+      return null;
+    }
   }
 }

@@ -88,7 +88,8 @@
       button.ghost:hover { background:#20242e; border-color:var(--border-hi); filter:none; }
       .row { display:flex; gap:8px; }
       .muted { color:var(--muted); font-size:12px; line-height:1.5; }
-      .hidden { display:none; }
+      /* !important so later display rules (e.g. .icon-btn's grid) can't win. */
+      .hidden { display:none !important; }
 
       /* Segmented tabs */
       .seg {
@@ -192,10 +193,10 @@
           <p class="muted" style="margin:0 0 12px">Enter your master password to unlock this device's vault.</p>
           <input id="master" type="password" placeholder="Master password" autofocus />
           <button id="unlockBtn" style="width:100%">Unlock</button>
-          <button id="bioBtn" class="ghost hidden" style="width:100%; margin-top:8px">Unlock with Touch ID</button>
+          <button id="bioBtn" class="ghost hidden" style="width:100%; margin-top:8px">Unlock with biometrics</button>
           <label id="enrollRow" class="muted hidden" style="display:flex; gap:7px; align-items:center; margin-top:11px; cursor:pointer">
             <input id="enrollChk" type="checkbox" style="width:auto; margin:0" />
-            Remember with Touch ID / Windows Hello
+            <span id="enrollLabel">Enable biometric unlock</span>
           </label>
         </div>
 
@@ -229,6 +230,7 @@
         <div class="toolbar">
           <input id="search" placeholder="Search vault…" />
           <button id="syncBtn" class="ghost icon-btn" title="Sync">⟳</button>
+          <button id="bioOffBtn" class="ghost icon-btn hidden" title="Disable biometric unlock (wipes the wrapped key)">🖐️</button>
           <button id="lockBtn" class="ghost icon-btn" title="Lock">🔒</button>
         </div>
 

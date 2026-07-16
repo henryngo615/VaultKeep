@@ -54,13 +54,20 @@ VK_SERVER=http://localhost:8787 VK_TOKEN=<token> npm start
 
 ## Biometric unlock (implemented + tested)
 
-`core/biometric.ts` — opt in after a password unlock and the master password is
-sealed by the OS secure enclave (Keychain on macOS, DPAPI on Windows, via
-Electron `safeStorage`). A later launch prompts Touch ID / Windows Hello and, on
-success, recovers the password and runs the normal KDF unlock. The plaintext
-password is never persisted; biometrics gate access, they don't replace the
-zero-knowledge key derivation. Adapters live in `electron/main.ts`; the logic is
-unit-tested against a fake enclave (`test/vault-app.test.ts`).
+`core/biometric.ts` — opt in after a password unlock and a copy of the derived
+**master key** (never the password, in any form) is wrapped by the OS keystore
+(Keychain on macOS, DPAPI on Windows, via Electron `safeStorage`) together with
+the salt/account it belongs to. A later launch prompts **Touch ID** (macOS,
+`systemPreferences.promptTouchID`) or **Windows Hello** (a real WinRT
+`UserConsentVerifier` prompt driven through PowerShell — no native module) and,
+on success, unwraps the key straight into `VaultApp.unlockWithKey()` — no
+Argon2 wait. Biometrics are offered only when both the keystore **and** a
+biometric verifier exist; otherwise the app falls back to the master password.
+Disabling biometrics (🖐️ in the toolbar) wipes the wrapped key; a stale or
+tampered wrapped key is rejected by the GCM auth tag and auto-wiped. Adapters
+live in `electron/main.ts` + `electron/windows-hello.ts`; the logic is
+unit-tested against a mock enclave (`test/biometric.test.ts`, 9 tests, no
+Electron required).
 
 ## Persistence (closed seam)
 

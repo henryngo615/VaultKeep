@@ -167,7 +167,14 @@ that signature and cannot mint approvals itself.
    starts a server-enforced waiting period (default 7 days) the owner can
    deny; after it elapses the server releases ciphertext only the contact's
    private key can open. Every recovery event fires a notification hook.
-6. ⬜ Breach monitoring via k-anonymity range queries
+6. ✅ Breach monitoring via k-anonymity range queries — HIBP-style
+   `/range/{prefix}`: the client SHA-1-hashes locally and sends only the
+   first 5 hex chars; the server answers with suffix:count lines
+   (unauthenticated + cacheable, so prefixes can't be linked to users) from
+   a built-in corpus, a `VK_BREACH_CORPUS` file, or a proxied
+   `VK_HIBP_UPSTREAM`. The desktop app's 🩺 **vault health** report flags
+   breached / reused / weak passwords; reuse and weakness still work
+   offline. Tests assert the full password/hash never leaves the client.
 
 ## A note on scope & threat model
 

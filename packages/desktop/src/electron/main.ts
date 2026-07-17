@@ -20,6 +20,7 @@ import {
   type TokenStore,
 } from "../core/biometric.js";
 import { helloAvailable, helloPrompt } from "./windows-hello.js";
+import { vaultHealth, httpRangeClient } from "../core/vault-health.js";
 import {
   generateSalt,
   generatePassword,
@@ -315,6 +316,15 @@ ipcMain.handle("bio:unenroll", async () => {
 });
 
 ipcMain.handle("vault:list", async () => appCore?.list() ?? []);
+
+/**
+ * Vault health (breached / reused / weak). Passwords are hashed here in the
+ * main process; only 5-char hash prefixes go over the network (k-anonymity).
+ */
+ipcMain.handle("vault:health", async () => {
+  if (!appCore?.isUnlocked) return { error: "vault is locked" };
+  return vaultHealth(appCore.list(), httpRangeClient(SERVER_URL));
+});
 
 ipcMain.handle("vault:add", async (_e, item) => appCore!.add(item));
 

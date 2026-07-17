@@ -280,6 +280,48 @@ $("genBtn").onclick = async () => {
   out.classList.remove("hidden");
 };
 
+$("healthBtn").onclick = async () => {
+  const card = $("healthCard");
+  if (!card.classList.contains("hidden")) return card.classList.add("hidden"); // toggle off
+  $("healthSummary").textContent = "Checking…";
+  $("healthList").innerHTML = "";
+  card.classList.remove("hidden");
+
+  const r = await window.vault.health();
+  if (r.error) return ($("healthSummary").textContent = r.error);
+
+  const s = r.summary;
+  $("healthSummary").textContent =
+    `${s.total} password${s.total === 1 ? "" : "s"} checked — ` +
+    `${s.breached} breached, ${s.reused} reused, ${s.weak} weak` +
+    (r.breachCheckAvailable ? "" : " (breach database unreachable — showing offline checks only)");
+
+  const flagged = r.items.filter((i) => i.reasons.length > 0);
+  if (!flagged.length) {
+    $("healthList").innerHTML = '<p class="muted" style="margin:0">✅ No problems found.</p>';
+    return;
+  }
+  for (const it of flagged) {
+    const row = document.createElement("div");
+    row.style.cssText = "padding:8px 0; border-top:1px solid var(--border)";
+    const badges = [
+      it.breached ? "🔴 breached" : "",
+      it.reused ? "🟠 reused" : "",
+      it.weak ? "🟡 weak" : "",
+    ].filter(Boolean).join("  ");
+    const title = document.createElement("div");
+    title.innerHTML = `<b></b> <span class="muted" style="font-size:11px"></span>`;
+    title.querySelector("b").textContent = it.title;
+    title.querySelector("span").textContent = badges;
+    const why = document.createElement("div");
+    why.className = "muted";
+    why.style.fontSize = "11px";
+    why.textContent = it.reasons.join(" · ");
+    row.append(title, why);
+    $("healthList").appendChild(row);
+  }
+};
+
 $("syncBtn").onclick = async () => {
   setStatus("Syncing…", true);
   try {

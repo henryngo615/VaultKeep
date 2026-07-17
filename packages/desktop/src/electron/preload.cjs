@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("vault", {
   list: () => ipcRenderer.invoke("vault:list"),
   add: (item) => ipcRenderer.invoke("vault:add", item),
   sync: () => ipcRenderer.invoke("vault:sync"),
+  health: () => ipcRenderer.invoke("vault:health"),
   genPassword: (opts) => ipcRenderer.invoke("gen:password", opts),
   genPassphrase: (words) => ipcRenderer.invoke("gen:passphrase", words),
   bioStatus: () => ipcRenderer.invoke("bio:available"),

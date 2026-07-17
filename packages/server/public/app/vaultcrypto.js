@@ -83,10 +83,73 @@ function generatePassword(length = 20) {
   return out;
 }
 
+// ---- Recovery kit (must stay byte-compatible with @vaultkeep/crypto) ----
+
+// Crockford base32 (no I/L/O/U): VK-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX.
+const RK_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+function generateRecoveryKey() {
+  const groups = [];
+  for (let g = 0; g < 5; g++) {
+    let s = "";
+    while (s.length < 5) {
+      const b = crypto.getRandomValues(new Uint8Array(1))[0];
+      if (b < 224) s += RK_ALPHABET[b % 32]; // unbiased rejection sampling
+    }
+    groups.push(s);
+  }
+  return "VK-" + groups.join("-");
+}
+
+function normalizeRecoveryKey(input) {
+  return input.toUpperCase().replace(/[^0-9A-Z]/g, "").replace(/^VK/, "")
+    .replace(/[IL]/g, "1").replace(/O/g, "0");
+}
+
+// HKDF-SHA256 split of the recovery key into the auth half (sent to the
+// server, which stores a hash) and the wrap half (never leaves the browser).
+async function recoveryParts(recoveryKey, saltB64) {
+  const ikm = await crypto.subtle.importKey(
+    "raw", enc.encode(normalizeRecoveryKey(recoveryKey)), "HKDF", false, ["deriveBits"]
+  );
+  const bits = (info) => crypto.subtle.deriveBits(
+    { name: "HKDF", hash: "SHA-256", salt: unb64(saltB64), info: enc.encode(info) }, ikm, 256
+  );
+  return {
+    authVerifier: b64(await bits("vaultkeep-recovery-auth")),
+    wrapKeyBits: await bits("vaultkeep-recovery-wrap"),
+  };
+}
+
+// GCM-wrap the raw master key bits (plaintext = their base64 string, exactly
+// like the node implementation, so desktop and web recovery kits interoperate).
+async function wrapMasterKey(wrapKeyBits, masterKeyBits) {
+  const key = await crypto.subtle.importKey("raw", wrapKeyBits, { name: "AES-GCM" }, false, ["encrypt"]);
+  const nonce = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, key, enc.encode(b64(masterKeyBits)));
+  const out = new Uint8Array(12 + ct.byteLength);
+  out.set(nonce, 0);
+  out.set(new Uint8Array(ct), 12);
+  return b64(out);
+}
+
+async function unwrapMasterKey(wrapKeyBits, blobB64) {
+  const key = await crypto.subtle.importKey("raw", wrapKeyBits, { name: "AES-GCM" }, false, ["decrypt"]);
+  const blob = unb64(blobB64);
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: blob.slice(0, 12) }, key, blob.slice(12));
+  return unb64(dec.decode(pt)); // raw master key bytes
+}
+
+// Rebuild the vault CryptoKey from recovered raw key bits.
+async function importAesKey(keyBits) {
+  return crypto.subtle.importKey("raw", keyBits, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+}
+
 // Shared default Argon2id params (must equal the server/desktop defaults).
 const DEFAULT_KDF = { memoryKiB: 65536, iterations: 3, parallelism: 4 };
 
 window.VaultCrypto = {
   deriveKey, deriveAuthVerifier, encryptJSON, decryptJSON,
   randomSaltB64, generatePassword, DEFAULT_KDF,
+  generateRecoveryKey, normalizeRecoveryKey, recoveryParts,
+  wrapMasterKey, unwrapMasterKey, importAesKey,
 };

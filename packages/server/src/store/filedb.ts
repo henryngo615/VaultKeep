@@ -5,6 +5,9 @@ import type { VaultRepository, StoredItem } from "../vault/vault.repository.js";
 import type { DeviceRepository, DeviceRecord } from "../devices/device.service.js";
 import type { MfaRepository, MfaRecord } from "../mfa/mfa.service.js";
 import type { PasskeyRepository, PasskeyRecord } from "../auth/passkey.service.js";
+import type {
+  RecoveryRepository, RecoveryRecord, EmergencyContactRecord,
+} from "../recovery/recovery.service.js";
 
 /**
  * Dead-simple JSON-file persistence so the web vault survives restarts without
@@ -19,15 +22,22 @@ interface DbShape {
   vault: StoredItem[];
   mfa: MfaRecord[];
   passkeys: PasskeyRecord[];
+  recoveries: RecoveryRecord[];
+  emergencyContacts: EmergencyContactRecord[];
 }
 
 export class FileDb {
-  private data: DbShape = { accounts: [], devices: [], vault: [], mfa: [], passkeys: [] };
+  private data: DbShape = {
+    accounts: [], devices: [], vault: [], mfa: [], passkeys: [],
+    recoveries: [], emergencyContacts: [],
+  };
 
   constructor(private readonly path: string) {
     try {
       this.data = JSON.parse(readFileSync(path, "utf8"));
-      for (const k of ["accounts", "devices", "vault", "mfa", "passkeys"] as const) {
+      for (const k of [
+        "accounts", "devices", "vault", "mfa", "passkeys", "recoveries", "emergencyContacts",
+      ] as const) {
         this.data[k] ??= [];
       }
     } catch {
@@ -55,6 +65,12 @@ export class FileAccountRepository implements AccountRepository {
   async create(rec: AccountRecord) {
     if (await this.findByEmail(rec.email)) throw new Error("email already registered");
     this.db.raw.accounts.push(rec);
+    this.db.save();
+  }
+  async updateAuthHash(id: string, authHash: string) {
+    const a = this.db.raw.accounts.find((x) => x.id === id);
+    if (!a) throw new Error("no such account");
+    a.authHash = authHash;
     this.db.save();
   }
 }
@@ -113,6 +129,33 @@ export class FilePasskeyRepository implements PasskeyRepository {
   async updateSignCount(credentialId: string, signCount: number) {
     const c = this.db.raw.passkeys.find((x) => x.credentialId === credentialId);
     if (c) { c.signCount = signCount; this.db.save(); }
+  }
+}
+
+export class FileRecoveryRepository implements RecoveryRepository {
+  constructor(private readonly db: FileDb) {}
+  async getRecovery(userId: string) {
+    return this.db.raw.recoveries.find((r) => r.userId === userId) ?? null;
+  }
+  async upsertRecovery(rec: RecoveryRecord) {
+    const i = this.db.raw.recoveries.findIndex((r) => r.userId === rec.userId);
+    if (i >= 0) this.db.raw.recoveries[i] = { ...rec };
+    else this.db.raw.recoveries.push({ ...rec });
+    this.db.save();
+  }
+  async listContacts(userId: string) {
+    return this.db.raw.emergencyContacts.filter((c) => c.userId === userId);
+  }
+  async getContact(id: string) {
+    return this.db.raw.emergencyContacts.find((c) => c.id === id) ?? null;
+  }
+  async createContact(rec: EmergencyContactRecord) {
+    this.db.raw.emergencyContacts.push({ ...rec });
+    this.db.save();
+  }
+  async updateContact(rec: EmergencyContactRecord) {
+    const i = this.db.raw.emergencyContacts.findIndex((c) => c.id === rec.id);
+    if (i >= 0) { this.db.raw.emergencyContacts[i] = { ...rec }; this.db.save(); }
   }
 }
 

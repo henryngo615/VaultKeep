@@ -11,9 +11,11 @@ import { DeviceService } from "./devices/device.service.js";
 import { MfaService } from "./mfa/mfa.service.js";
 import { WebauthnService } from "./auth/webauthn.service.js";
 import { PasskeyService } from "./auth/passkey.service.js";
+import { RecoveryService, type RecoveryNotifier } from "./recovery/recovery.service.js";
 import {
   FileDb, FileAccountRepository, FileVaultRepository,
   FileDeviceRepository, FileMfaRepository, FilePasskeyRepository,
+  FileRecoveryRepository,
 } from "./store/filedb.js";
 import QRCode from "qrcode";
 
@@ -63,6 +65,7 @@ async function buildRepositories() {
       devices: new adapters.PrismaDeviceRepository(prisma),
       mfa: new adapters.PrismaMfaRepository(prisma),
       passkeys: new adapters.PrismaPasskeyRepository(prisma),
+      recovery: new adapters.PrismaRecoveryRepository(prisma),
     };
   }
   const db = new FileDb(DB_PATH);
@@ -73,6 +76,7 @@ async function buildRepositories() {
     devices: new FileDeviceRepository(db),
     mfa: new FileMfaRepository(db),
     passkeys: new FilePasskeyRepository(db),
+    recovery: new FileRecoveryRepository(db),
   };
 }
 
@@ -89,6 +93,17 @@ const passkeys = new PasskeyService(repos.passkeys, {
   rpName: "VaultKeep",
   origins: (process.env.WEBAUTHN_ORIGINS ?? `http://localhost:${PORT}`).split(","),
 });
+
+// Recovery notifications: stdout here; wire to email/push in production.
+const notifier: RecoveryNotifier = {
+  recoveryKeyUsed: (u) => console.log(`[notify] recovery key used for user ${u}`),
+  emergencyRequested: (u, c) =>
+    console.log(`[notify] EMERGENCY ACCESS requested by ${c.contactEmail} for user ${u} — unlocks ${c.unlockAt}`),
+  emergencyDenied: (u, c) => console.log(`[notify] emergency access DENIED for ${c.contactEmail} (user ${u})`),
+  emergencyReleased: (u, c) => console.log(`[notify] emergency key RELEASED to ${c.contactEmail} (user ${u})`),
+};
+const RECOVERY_WAIT_MS = Number(process.env.VK_EMERGENCY_WAIT_MS ?? 7 * 24 * 60 * 60 * 1000);
+const recovery = new RecoveryService(repos.recovery, notifier, RECOVERY_WAIT_MS);
 
 const MIME: Record<string, string> = {
   ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
@@ -145,7 +160,7 @@ const server = createServer(async (req, res) => {
   const path = url.pathname;
 
   // Lightweight request log for API routes (helps diagnose auth issues).
-  if (path.startsWith("/auth") || path.startsWith("/vault") || path.startsWith("/devices")) {
+  if (/^\/(auth|vault|devices|recovery|emergency)/.test(path)) {
     const origEnd = res.end.bind(res);
     (res as any).end = (...args: any[]) => {
       console.log(`${req.method} ${path} -> ${res.statusCode}`);
@@ -161,7 +176,7 @@ const server = createServer(async (req, res) => {
 
   // Static web UI: serve the landing page (/) and web vault (/app) for GETs
   // that aren't API routes.
-  if (req.method === "GET" && !path.startsWith("/auth") && !path.startsWith("/vault") && !path.startsWith("/devices")) {
+  if (req.method === "GET" && !/^\/(auth|vault|devices|recovery|emergency)/.test(path)) {
     if (await serveStatic(res, path)) return;
   }
 
@@ -300,6 +315,50 @@ const server = createServer(async (req, res) => {
     return json(res, result.ok ? 200 : 403, result);
   }
 
+  // --- Recovery (pre-auth: the user has LOST their password) ---------------
+
+  // Present the recovery verifier -> get the wrapped master key back.
+  // The blob is ciphertext under the wrap half the server never saw.
+  if (req.method === "POST" && path === "/recovery/begin") {
+    const b = await readBody(req);
+    const uid = await accounts.idFor(b.email ?? "");
+    const out = uid ? await recovery.begin(uid, b.authVerifier ?? "") : null;
+    if (!out) return json(res, 401, { error: "invalid recovery key" });
+    return json(res, 200, { ...out, ...(await accounts.kdfParamsFor(b.email)) });
+  }
+
+  // Verified recovery key resets the LOGIN verifier (never touches vault
+  // ciphertext — re-encryption under a new password is the client's job).
+  if (req.method === "POST" && path === "/recovery/complete") {
+    const b = await readBody(req);
+    const uid = await accounts.idFor(b.email ?? "");
+    const ok = uid && (await recovery.begin(uid, b.authVerifier ?? ""));
+    if (!ok) return json(res, 401, { error: "invalid recovery key" });
+    try {
+      await accounts.resetVerifier(uid!, b.newAuthVerifier ?? "");
+      return json(res, 200, { ok: true });
+    } catch (e) {
+      return json(res, 400, { error: String((e as Error).message) });
+    }
+  }
+
+  // --- Emergency contact (pre-auth: contact proves key control by signing) --
+
+  if (req.method === "POST" && path === "/emergency/request") {
+    const b = await readBody(req);
+    const out = await recovery.requestAccess(b.contactId ?? "", b.signature ?? "");
+    if (!out) return json(res, 403, { error: "request refused" });
+    return json(res, 202, out);
+  }
+
+  if (req.method === "POST" && path === "/emergency/collect") {
+    const b = await readBody(req);
+    const out = await recovery.collect(b.contactId ?? "", b.signature ?? "");
+    if (!out) return json(res, 403, { error: "collect refused" });
+    if ("waitUntil" in out) return json(res, 403, { error: "waiting period active", ...out });
+    return json(res, 200, out);
+  }
+
   // --- Everything below requires authentication ----------------------------
   const auth = await authenticate(req, tokens, deviceService);
   if (!auth.ok) return json(res, auth.status, { error: auth.message });
@@ -323,6 +382,54 @@ const server = createServer(async (req, res) => {
       name: b.name,
     });
     return json(res, result.ok ? 201 : 400, result);
+  }
+
+  // --- Recovery management (full session required) --------------------------
+
+  /** Store/rotate the recovery verifier hash + client-wrapped master key. */
+  if (req.method === "POST" && path === "/recovery/setup") {
+    const b = await readBody(req);
+    try {
+      await recovery.setup(userId, b.authVerifier ?? "", b.wrappedKey ?? "");
+      return json(res, 201, { ok: true });
+    } catch (e) {
+      return json(res, 400, { error: String((e as Error).message) });
+    }
+  }
+
+  if (req.method === "GET" && path === "/recovery/status") {
+    return json(res, 200, { configured: await recovery.isConfigured(userId) });
+  }
+
+  /** Designate an emergency contact (key already sealed to them client-side). */
+  if (req.method === "POST" && path === "/emergency/contacts") {
+    const b = await readBody(req);
+    try {
+      const c = await recovery.addContact({
+        userId,
+        contactEmail: b.contactEmail ?? "",
+        contactSigningPublicKey: b.contactSigningPublicKey ?? "",
+        ephemeralPublicKey: b.ephemeralPublicKey ?? "",
+        wrappedKey: b.wrappedKey ?? "",
+      });
+      return json(res, 201, { contact: { id: c.id, contactEmail: c.contactEmail, state: c.state } });
+    } catch (e) {
+      return json(res, 400, { error: String((e as Error).message) });
+    }
+  }
+
+  if (req.method === "GET" && path === "/emergency/contacts") {
+    const contacts = (await recovery.listContacts(userId)).map((c) => ({
+      id: c.id, contactEmail: c.contactEmail, state: c.state, unlockAt: c.unlockAt,
+    }));
+    return json(res, 200, { contacts });
+  }
+
+  /** Owner denies a pending emergency request — cancels the timer for good. */
+  if (req.method === "POST" && path === "/emergency/deny") {
+    const b = await readBody(req);
+    const ok = await recovery.deny(userId, b.contactId ?? "");
+    return json(res, ok ? 200 : 404, { ok });
   }
 
   const itemMatch = path.match(/^\/vault\/items\/([\w-]+)$/);

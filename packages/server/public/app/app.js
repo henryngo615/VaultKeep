@@ -42,11 +42,18 @@ $("tabReg").onclick = () => switchAuth("reg");
 function switchAuth(which) {
   $("loginPane").classList.toggle("hidden", which !== "login");
   $("regPane").classList.toggle("hidden", which !== "reg");
+  $("recPane").classList.toggle("hidden", which !== "recover");
   $("enrollPane").classList.add("hidden");
   $("tabLogin").classList.toggle("active", which === "login");
   $("tabReg").classList.toggle("active", which === "reg");
   setErr($("authErr"), "");
 }
+$("forgotLink").onclick = (e) => {
+  e.preventDefault();
+  $("rc_email").value = $("li_email").value;
+  switchAuth("recover");
+};
+$("recBackLink").onclick = (e) => { e.preventDefault(); switchAuth("login"); };
 
 // ---- Register ----
 $("regBtn").onclick = async () => {
@@ -135,14 +142,154 @@ async function passwordLogin() {
 
   const login = await api("/auth/login", { method: "POST", body: { email, authVerifier, deviceId: device.deviceId } });
   if (login.status !== 200) return setErr($("authErr"), login.data.error || "Invalid credentials"), null;
-  return { email, preToken: login.data.token, userId: login.data.userId, key: k };
+  return { email, preToken: login.data.token, userId: login.data.userId, key: k, keyBits, kdfSalt: kdf.data.kdfSalt };
 }
 
-function finishLogin(pre, fullToken) {
+async function finishLogin(pre, fullToken) {
   session = { token: fullToken, userId: pre.userId, email: pre.email };
   aesKey = pre.key;
-  return loadVault().then(showVault);
+  await loadVault();
+  showVault();
+  await offerRecoveryKit(pre.keyBits, pre.kdfSalt);
 }
+
+// ---- Recovery kit ----
+
+/**
+ * First sign-in without a recovery kit: generate one, wrap the master key
+ * IN THE BROWSER, upload only the verifier + wrapped blob, and show the key
+ * exactly once. The server ends up with one hash and one ciphertext.
+ */
+async function offerRecoveryKit(keyBits, kdfSalt) {
+  if (!keyBits || !kdfSalt) return;
+  const st = await api("/recovery/status", { token: session.token });
+  if (st.status !== 200 || st.data.configured) return;
+  const recoveryKey = VC.generateRecoveryKey();
+  const parts = await VC.recoveryParts(recoveryKey, kdfSalt);
+  const wrappedKey = await VC.wrapMasterKey(parts.wrapKeyBits, keyBits);
+  const r = await api("/recovery/setup", {
+    method: "POST", token: session.token,
+    body: { authVerifier: parts.authVerifier, wrappedKey },
+  });
+  if (r.status !== 201) return; // non-fatal — offered again next sign-in
+  await showRecoveryKeyOnce(recoveryKey);
+}
+
+function showRecoveryKeyOnce(recoveryKey) {
+  return new Promise((resolve) => {
+    $("rkValue").textContent = recoveryKey;
+    $("rkModal").classList.remove("hidden");
+    $("rkCopy").onclick = async () => {
+      await navigator.clipboard.writeText(recoveryKey);
+      $("rkCopy").textContent = "Copied!";
+      setTimeout(() => ($("rkCopy").textContent = "Copy to clipboard"), 1200);
+    };
+    $("rkDone").onclick = () => {
+      $("rkValue").textContent = "";
+      $("rkModal").classList.add("hidden");
+      resolve();
+    };
+  });
+}
+
+/** Login that self-enrolls this browser as a device when it has none. */
+async function loginEnrollingDevice(email, authVerifier) {
+  const device = loadDevice(email);
+  let login = await api("/auth/login", {
+    method: "POST", body: { email, authVerifier, ...(device ? { deviceId: device.deviceId } : {}) },
+  });
+  if (login.status === 200 && login.data.needsDevice) {
+    const rand = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))));
+    const dev = await api("/devices/enroll", {
+      method: "POST",
+      body: { userId: login.data.userId, name: "Web browser", platform: "web", publicKey: rand(), signingPublicKey: rand() },
+    });
+    saveDevice(email, { deviceId: dev.data.device.id, email });
+    login = await api("/auth/login", {
+      method: "POST", body: { email, authVerifier, deviceId: dev.data.device.id },
+    });
+  }
+  return login;
+}
+
+/**
+ * Forgot-password recovery, all client-side crypto:
+ * verifier from the recovery key -> wrapped blob back -> unwrap the OLD master
+ * key -> set a new password -> sign in -> re-encrypt every item under the new
+ * key -> hand out a fresh recovery key (the old blob is now useless).
+ */
+$("recoverBtn").onclick = async () => {
+  const email = $("rc_email").value.trim();
+  const rkey = $("rc_key").value.trim();
+  const newPw = $("rc_newpw").value;
+  const code = $("rc_code").value.trim();
+  if (!email || !rkey || newPw.length < 8) {
+    return setErr($("authErr"), "Email, recovery key, and an 8+ char new password required.");
+  }
+  setErr($("authErr"), "Checking recovery key…");
+
+  const kdf = await api("/auth/kdf", { method: "POST", body: { email } });
+  const parts = await VC.recoveryParts(rkey, kdf.data.kdfSalt);
+  const begin = await api("/recovery/begin", { method: "POST", body: { email, authVerifier: parts.authVerifier } });
+  if (begin.status !== 200) return setErr($("authErr"), begin.data.error || "Invalid recovery key");
+
+  // Unwrap the old master key locally; the server only ever saw ciphertext.
+  let oldKeyBits;
+  try {
+    oldKeyBits = await VC.unwrapMasterKey(parts.wrapKeyBits, begin.data.wrappedKey);
+  } catch {
+    return setErr($("authErr"), "Recovery blob didn't verify — wrong key?");
+  }
+  const oldAesKey = await VC.importAesKey(oldKeyBits);
+
+  setErr($("authErr"), "Setting your new password…");
+  const params = { memoryKiB: kdf.data.kdfMemoryKiB, iterations: kdf.data.kdfIterations, parallelism: kdf.data.kdfParallel };
+  const { aesKey: newAesKey, keyBits: newKeyBits } = await VC.deriveKey(newPw, kdf.data.kdfSalt, params);
+  const newVerifier = await VC.deriveAuthVerifier(newKeyBits, newPw);
+  const done = await api("/recovery/complete", {
+    method: "POST",
+    body: { email, authVerifier: parts.authVerifier, newAuthVerifier: newVerifier },
+  });
+  if (done.status !== 200) return setErr($("authErr"), done.data.error || "Could not reset the password");
+
+  // Sign in with the new password (TOTP still required — recovery doesn't skip MFA).
+  const login = await loginEnrollingDevice(email, newVerifier);
+  if (login.status !== 200) return setErr($("authErr"), login.data.error || "Sign-in failed after reset");
+  const mfa = await api("/auth/mfa", { method: "POST", body: { token: login.data.token, code } });
+  if (mfa.status !== 200) return setErr($("authErr"), mfa.data.error || "Invalid 2FA code");
+  session = { token: mfa.data.token, userId: login.data.userId, email };
+
+  // Re-encrypt the vault under the new key, item by item, in the browser.
+  setErr($("authErr"), "Re-encrypting your vault…");
+  const rows = await api("/vault/items", { token: session.token });
+  for (const row of rows.data.items || []) {
+    try {
+      const item = await VC.decryptJSON(oldAesKey, row.ciphertext);
+      const ciphertext = await VC.encryptJSON(newAesKey, item);
+      await api(`/vault/items/${row.id}`, {
+        method: "PUT", token: session.token,
+        body: { ciphertext, baseVersion: row.version },
+      });
+    } catch { /* rows from a different key stay as-is */ }
+  }
+
+  aesKey = newAesKey;
+  await loadVault();
+  showVault();
+  $("rc_key").value = $("rc_newpw").value = $("rc_code").value = "";
+  $("li_email").value = email;
+  switchAuth("login"); // next logout lands on the sign-in pane, not recovery
+
+  // The old recovery kit wrapped the OLD key — rotate to a fresh one.
+  const rotated = VC.generateRecoveryKey();
+  const newParts = await VC.recoveryParts(rotated, kdf.data.kdfSalt);
+  const wrappedKey = await VC.wrapMasterKey(newParts.wrapKeyBits, newKeyBits);
+  const setup = await api("/recovery/setup", {
+    method: "POST", token: session.token,
+    body: { authVerifier: newParts.authVerifier, wrappedKey },
+  });
+  if (setup.status === 201) await showRecoveryKeyOnce(rotated);
+};
 
 $("loginBtn").onclick = async () => {
   const code = $("li_code").value.trim();

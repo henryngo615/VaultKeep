@@ -12,7 +12,8 @@
     "./auth/webauthn.service.js": "./src/auth/webauthn.service.ts",
     "./devices/device.service.js": "./src/devices/device.service.ts",
     "./mfa/mfa.service.js": "./src/mfa/mfa.service.ts",
-    "./mfa/totp.service.js": "./src/mfa/totp.service.ts"
+    "./mfa/totp.service.js": "./src/mfa/totp.service.ts",
+    "./recovery/recovery.service.js": "./src/recovery/recovery.service.ts"
   },
   "scripts": {
     "build": "tsc",

@@ -27,7 +27,8 @@ model User {
   vaultItems    VaultItem[]
   mfaMethods    MfaMethod[]
   passkeys      PasskeyCredential[]
-  recoveryKeys  RecoveryKey[]
+  recoveryKey   RecoveryKey?
+  emergencyContacts EmergencyContact[]
   auditLogs     AuditLog[]
 }
 
@@ -88,12 +89,33 @@ model PasskeyCredential {
 }
 
 model RecoveryKey {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  // Hash of the recovery key; the plaintext is shown once at setup.
-  keyHash   String
-  createdAt DateTime @default(now())
+  // One recovery configuration per user (rotating replaces it).
+  userId       String   @id
+  user         User     @relation(fields: [userId], references: [id])
+  // Argon2 hash of the recovery AUTH VERIFIER (client-derived; the wrap half
+  // of the recovery key never reaches the server).
+  verifierHash String
+  // Master key wrapped under the client-only wrap key — opaque ciphertext.
+  wrappedKey   String
+  createdAt    DateTime @default(now())
+}
+
+model EmergencyContact {
+  id                      String    @id @default(uuid())
+  userId                  String
+  user                    User      @relation(fields: [userId], references: [id])
+  contactEmail            String
+  // Contact's Ed25519 public key — authenticates their signed requests.
+  contactSigningPublicKey String
+  // Master key SEALED to the contact's X25519 key (ephemeral ECDH) —
+  // the server stores and times the release; it can never open it.
+  ephemeralPublicKey      String
+  wrappedKey              String
+  state                   String    @default("enrolled") // enrolled|pending|denied|released
+  unlockAt                DateTime?
+  createdAt               DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model AuditLog {

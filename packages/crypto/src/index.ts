@@ -3,6 +3,7 @@ export * from "./kdf.js";
 export * from "./vault.js";
 export * from "./generator.js";
 export * from "./devicekeys.js";
+export * from "./recovery.js";
 
 import { deriveMasterKey, generateSalt, type KdfParams } from "./kdf.js";
 import { encrypt, decrypt } from "./vault.js";

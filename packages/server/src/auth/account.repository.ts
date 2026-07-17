@@ -24,6 +24,8 @@ export interface AccountRepository {
   findByEmail(email: string): Promise<AccountRecord | null>;
   findById(id: string): Promise<AccountRecord | null>;
   create(rec: AccountRecord): Promise<void>;
+  /** Replace the auth verifier hash (password change / recovery). */
+  updateAuthHash(id: string, authHash: string): Promise<void>;
 }
 
 export class InMemoryAccountRepository implements AccountRepository {
@@ -43,5 +45,10 @@ export class InMemoryAccountRepository implements AccountRepository {
     }
     this.byId.set(rec.id, { ...rec });
     this.byEmail.set(rec.email.toLowerCase(), rec.id);
+  }
+  async updateAuthHash(id: string, authHash: string): Promise<void> {
+    const rec = this.byId.get(id);
+    if (!rec) throw new Error("no such account");
+    rec.authHash = authHash;
   }
 }

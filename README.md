@@ -157,7 +157,16 @@ that signature and cannot mint approvals itself.
    `chrome.storage.session` with a sliding auto-lock, master key zeroed after
    decrypt (verified live: unlock → autofill on an HTTPS page in Edge).
    **Next:** inline credential picker, save-password flow, passkey support
-5. ⬜ Recovery (recovery key + emergency-contact waiting period)
+5. ✅ Recovery — zero-knowledge on both paths. **Recovery key**: the client
+   generates `VK-XXXXX-…` (~125 bits), HKDF-splits it into an auth verifier
+   (server stores only an Argon2 hash) and a wrap key (never leaves the
+   client) that AES-GCM-wraps the master key; forgot-password = present
+   verifier → get blob → unwrap locally → set new password → the browser
+   re-encrypts every item and rotates the kit. **Emergency contact**: the
+   master key is sealed to the contact's X25519 public key; a signed request
+   starts a server-enforced waiting period (default 7 days) the owner can
+   deny; after it elapses the server releases ciphertext only the contact's
+   private key can open. Every recovery event fires a notification hook.
 6. ⬜ Breach monitoring via k-anonymity range queries
 
 ## A note on scope & threat model

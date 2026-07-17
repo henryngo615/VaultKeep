@@ -230,8 +230,16 @@
         <div class="toolbar">
           <input id="search" placeholder="Search vault…" />
           <button id="syncBtn" class="ghost icon-btn" title="Sync">⟳</button>
+          <button id="healthBtn" class="ghost icon-btn" title="Vault health check">🩺</button>
           <button id="bioOffBtn" class="ghost icon-btn hidden" title="Disable biometric unlock (wipes the wrapped key)">🖐️</button>
           <button id="lockBtn" class="ghost icon-btn" title="Lock">🔒</button>
+        </div>
+
+        <!-- Vault health report (filled by the 🩺 button) -->
+        <div id="healthCard" class="card hidden">
+          <h2 style="margin-bottom:8px">🩺 Vault health</h2>
+          <p id="healthSummary" class="muted" style="margin:0 0 10px"></p>
+          <div id="healthList"></div>
         </div>
 
         <div class="card">

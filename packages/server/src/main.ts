@@ -12,6 +12,7 @@ import { MfaService } from "./mfa/mfa.service.js";
 import { WebauthnService } from "./auth/webauthn.service.js";
 import { PasskeyService } from "./auth/passkey.service.js";
 import { RecoveryService, type RecoveryNotifier } from "./recovery/recovery.service.js";
+import { BreachRangeService, httpUpstream } from "./breach/range.service.js";
 import {
   FileDb, FileAccountRepository, FileVaultRepository,
   FileDeviceRepository, FileMfaRepository, FilePasskeyRepository,
@@ -104,6 +105,18 @@ const notifier: RecoveryNotifier = {
 };
 const RECOVERY_WAIT_MS = Number(process.env.VK_EMERGENCY_WAIT_MS ?? 7 * 24 * 60 * 60 * 1000);
 const recovery = new RecoveryService(repos.recovery, notifier, RECOVERY_WAIT_MS);
+
+// Breach range queries (k-anonymity): local corpus, optionally backed by a
+// real HIBP-compatible upstream. Unauthenticated by design — see the route.
+const breach = new BreachRangeService(
+  process.env.VK_HIBP_UPSTREAM ? httpUpstream(process.env.VK_HIBP_UPSTREAM) : null
+);
+if (process.env.VK_BREACH_CORPUS) {
+  const n = breach.loadCorpusFile(process.env.VK_BREACH_CORPUS);
+  console.log(`Breach corpus: ${n} entries from ${process.env.VK_BREACH_CORPUS}`);
+} else {
+  breach.loadDemoCorpus();
+}
 
 const MIME: Record<string, string> = {
   ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
@@ -313,6 +326,20 @@ const server = createServer(async (req, res) => {
       b.userId, b.approverDeviceId, approveMatch[1], b.signature
     );
     return json(res, result.ok ? 200 : 403, result);
+  }
+
+  // --- Breach range query (k-anonymity) ------------------------------------
+  // Deliberately UNAUTHENTICATED and aggressively cacheable: a bearer token
+  // here would let the server link hash prefixes to accounts. The 5-hex-char
+  // prefix is all it ever learns; matching happens on the client.
+  const rangeMatch = path.match(/^\/range\/([0-9A-Fa-f]{5})$/);
+  if (req.method === "GET" && rangeMatch) {
+    const body = await breach.range(rangeMatch[1].toUpperCase());
+    res.writeHead(200, {
+      "content-type": "text/plain",
+      "cache-control": "public, max-age=3600",
+    });
+    return res.end(body);
   }
 
   // --- Recovery (pre-auth: the user has LOST their password) ---------------

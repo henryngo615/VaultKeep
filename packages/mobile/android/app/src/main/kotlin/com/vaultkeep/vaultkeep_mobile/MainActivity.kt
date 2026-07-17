@@ -1,0 +1,5 @@
+package com.vaultkeep.vaultkeep_mobile
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()

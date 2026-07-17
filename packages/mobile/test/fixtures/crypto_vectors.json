@@ -1,0 +1,41 @@
+{
+  "kdf": [
+    {
+      "password": "correct horse battery staple",
+      "saltB64": "q83vASNFZ4mrze8BI0VniQ==",
+      "params": {
+        "memoryKiB": 1024,
+        "iterations": 2,
+        "parallelism": 1
+      },
+      "keyB64": "mKNM8tVlFGSgUkRtrhMh0P+5sHP4y9NnndSP5NJuJPY="
+    },
+    {
+      "password": "mobile-test-pw-42!",
+      "saltB64": "AAECAwQFBgcICQoLDA0ODw==",
+      "params": {
+        "memoryKiB": 2048,
+        "iterations": 1,
+        "parallelism": 4
+      },
+      "keyB64": "jZBNmB7jMO22NQ/tnTGm0kLMbuZCevDrpQZlZB0TirU="
+    }
+  ],
+  "verifier": {
+    "keyB64": "mKNM8tVlFGSgUkRtrhMh0P+5sHP4y9NnndSP5NJuJPY=",
+    "password": "correct horse battery staple",
+    "expected": "j47+qk17nlOKd6E3vvRIrTv8UtHjGQ+1U0BDH3EZEkA="
+  },
+  "blobs": [
+    {
+      "keyB64": "mKNM8tVlFGSgUkRtrhMh0P+5sHP4y9NnndSP5NJuJPY=",
+      "plaintext": "{\"type\":\"login\",\"title\":\"GitHub\",\"username\":\"henry\",\"password\":\"gh-secret-1\"}",
+      "blobB64": "NadvqtPouSWcs15NuVc4PaXrDPI0GRawrI6TafvuFI9F2ycewLhHlPgYzNGEl1gDfM7dit+zPGKiYPO8w0s0TcRDI9bfJh54tZ67keIprtpsLxlDz9nbG7x0Dypsng1ChTQWIpZeesAB"
+    },
+    {
+      "keyB64": "mKNM8tVlFGSgUkRtrhMh0P+5sHP4y9NnndSP5NJuJPY=",
+      "plaintext": "short",
+      "blobB64": "hACT699EA+LvLBwPFNj3f7jlw4pBxU5wmSX+SW2nP4iZ"
+    }
+  ]
+}

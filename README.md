@@ -49,7 +49,7 @@ Master Password ──Argon2id(256MiB,t=4,p=4)──▶ 256-bit key
 | `packages/server` | Sync API, zero-knowledge auth, devices, TOTP, Prisma adapters | ✅ **implemented + tested** (in-memory store; Prisma adapters ready for the prod swap) |
 | `packages/extension` | MV3 browser extension | ✅ **autofill engine + popup unlock/sync implemented + tested** |
 | `packages/desktop` | Electron desktop (Mac/Win) | ✅ **app core implemented + tested**; Electron GUI shell included |
-| `packages/mobile` | Flutter mobile (iOS/Android) | ⬜ scaffold |
+| `packages/mobile` | Flutter mobile (iOS/Android) | ✅ **app implemented + tested** (Dart crypto byte-compatible with the node core; sign-in/vault/sync UI; `flutter test` 21 green) |
 
 ## What actually runs today
 
@@ -148,7 +148,12 @@ that signature and cannot mint approvals itself.
    derived master key (never the password) is wrapped by the OS keystore
    (Keychain / DPAPI) and gated behind a real biometric prompt (WinRT
    `UserConsentVerifier` on Windows); disabling wipes the wrapped key, and a
-   stale key is rejected by the GCM tag. **Next:** mobile.
+   stale key is rejected by the GCM tag — and ✅ **mobile (Flutter)**: a
+   pure-Dart port of the crypto core proven byte-compatible against
+   node-generated vectors (same Argon2id key, same GCM blobs, same
+   verifier — a Dart-encrypted item decrypts with the node core, verified
+   live over the real API), with the full sign-in → sync → vault UI.
+   **Next:** mobile biometric unlock, platform autofill.
 4. ✅ Browser extension autofill engine: field classifier, origin-scoped
    matcher, and a fill planner that refuses to write passwords on look-alike
    domains or non-HTTPS pages — plus **real popup unlock**: Argon2id (same

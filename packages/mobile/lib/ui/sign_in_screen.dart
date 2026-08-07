@@ -1,19 +1,33 @@
-import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/auth_client.dart';
+import '../core/device_store_file.dart';
 import '../core/local_store.dart';
+import 'recovery_unlock_screen.dart';
 
 /// Sign-in / registration. The master password is fed straight into the core
 /// AuthClient (Argon2id on-device) — it never appears in any request.
 class SignInScreen extends StatefulWidget {
   final Future<void> Function(Session session, String serverUrl) onSignedIn;
+  /// Fired after a successful "forgot password?" recovery, once the user has
+  /// signed back in with their new password — the caller still needs
+  /// [oldMasterKey] to unlock and re-encrypt (`VaultApp.rekey`) whatever the
+  /// server/local cache holds under the password being replaced.
+  final Future<void> Function(
+          Session session, Uint8List oldMasterKey, String serverUrl)
+      onRecovered;
   /// Injectable for widget tests; defaults to the real client factory.
   final AuthClient Function(String baseUrl, DeviceStore devices)? clientFactory;
-  const SignInScreen({super.key, required this.onSignedIn, this.clientFactory});
+  const SignInScreen({
+    super.key,
+    required this.onSignedIn,
+    required this.onRecovered,
+    this.clientFactory,
+  });
 
   @override
   State<SignInScreen> createState() => _SignInScreenState();
@@ -33,7 +47,7 @@ class _SignInScreenState extends State<SignInScreen> {
 
   Future<DeviceStore> _deviceStore() async {
     final dir = await getApplicationSupportDirectory();
-    return _FileDeviceStore(FileStore('${dir.path}${Platform.pathSeparator}devices.json'));
+    return FileDeviceStore(FileStore('${dir.path}${Platform.pathSeparator}devices.json'));
   }
 
   AuthClient _client(DeviceStore devices) =>
@@ -178,6 +192,23 @@ class _SignInScreenState extends State<SignInScreen> {
                           ? 'Have an account? Sign in'
                           : 'New here? Create an account'),
                     ),
+                    if (!_registering)
+                      TextButton(
+                        key: const Key('forgotPassword'),
+                        onPressed: _busy
+                            ? null
+                            : () => Navigator.of(context).push(MaterialPageRoute(
+                                  builder: (_) => RecoveryUnlockScreen(
+                                    serverUrl: _server.text.trim(),
+                                    onRecovered: (session, oldMasterKey) async {
+                                      Navigator.of(context).pop();
+                                      await widget.onRecovered(
+                                          session, oldMasterKey, _server.text.trim());
+                                    },
+                                  ),
+                                )),
+                        child: const Text('Forgot your password?'),
+                      ),
                     ExpansionTile(
                       title: Text('Server',
                           style: Theme.of(context).textTheme.bodySmall),
@@ -204,39 +235,5 @@ class _SignInScreenState extends State<SignInScreen> {
         ),
       ),
     );
-  }
-}
-
-/// Device identities persisted as a tiny JSON file. Not secret-free like the
-/// old deviceId-only version — this now includes each account's signing/
-/// exchange PRIVATE keys, so unlike the vault blob this file deliberately
-/// lives unencrypted (there's no master key available before sign-in to
-/// protect it with), same tradeoff desktop's on-disk `device.json` makes.
-class _FileDeviceStore implements DeviceStore {
-  final LocalStore store;
-  _FileDeviceStore(this.store);
-
-  Future<Map<String, dynamic>> _read() async {
-    final raw = await store.readRaw();
-    if (raw == null) return {};
-    try {
-      return Map<String, dynamic>.from(jsonDecode(raw) as Map);
-    } catch (_) {
-      return {};
-    }
-  }
-
-  @override
-  Future<DeviceIdentity?> load(String email) async {
-    final j = (await _read())[email.toLowerCase()];
-    if (j == null) return null;
-    return DeviceIdentity.fromJson(Map<String, dynamic>.from(j as Map));
-  }
-
-  @override
-  Future<void> save(String email, DeviceIdentity identity) async {
-    final m = await _read();
-    m[email.toLowerCase()] = identity.toJson();
-    await store.writeRaw(jsonEncode(m));
   }
 }

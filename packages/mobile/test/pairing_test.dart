@@ -22,7 +22,11 @@ void main() {
     expect(decoded.deviceId, 'dev-1');
     expect(decoded.name, 'Mobile');
     expect(decoded.signature, payload.signature);
-    expect(decoded.expiresAt, payload.expiresAt);
+    // The wire format is millisecond-precision (JSON epoch-ms); DateTime.now()
+    // carries microseconds, so compare at the precision that actually
+    // round-trips instead of full DateTime equality.
+    expect(decoded.expiresAt.millisecondsSinceEpoch,
+        payload.expiresAt.millisecondsSinceEpoch);
   });
 
   test('an expired payload reports isExpired', () async {

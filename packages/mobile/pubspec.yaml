@@ -14,6 +14,10 @@ dependencies:
   cryptography: ^2.7.0
   http: ^1.2.0
   path_provider: ^2.1.0
+  # Biometric unlock: local_auth gates the prompt, flutter_secure_storage IS
+  # the OS keystore (Keychain / Android Keystore) the wrapped key lives in.
+  local_auth: ^2.3.0
+  flutter_secure_storage: ^9.2.2
 
 dev_dependencies:
   flutter_test:

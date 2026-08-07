@@ -112,6 +112,11 @@ class VaultApp {
     _key = key;
   }
 
+  /// A COPY of the live master key, for wrapping behind the OS keystore when
+  /// the user enables biometric unlock. The caller owns the copy and must
+  /// zero it after wrapping.
+  Uint8List snapshotKey() => Uint8List.fromList(_requireKey());
+
   /// Wipe the key and plaintext from memory.
   void lock() {
     if (_key != null) zeroKey(_key!);

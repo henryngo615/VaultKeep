@@ -18,6 +18,10 @@ dependencies:
   # device, mobile_scanner reads it on an already-trusted device's camera.
   qr_flutter: ^4.1.0
   mobile_scanner: ^5.2.3
+  # Biometric unlock: local_auth gates the prompt, flutter_secure_storage IS
+  # the OS keystore (Keychain / Android Keystore) the wrapped key lives in.
+  local_auth: ^2.3.0
+  flutter_secure_storage: ^9.2.2
 
 dev_dependencies:
   flutter_test:

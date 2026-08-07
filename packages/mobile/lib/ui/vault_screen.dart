@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/biometric.dart';
 import '../core/vault_app.dart';
+import '../core/vault_crypto.dart' show zeroKey;
 
 /// The unlocked vault: search, list, item detail (copy/reveal), add sheet
 /// with a generator, manual sync, lock. Pure UI over the tested core.
@@ -16,6 +18,11 @@ class VaultScreen extends StatefulWidget {
   /// live token, so both are omitted together for offline sessions.
   final VoidCallback? onOpenRecoverySetup;
   final VoidCallback? onOpenEmergencyContacts;
+  /// Enables the biometric enroll/unenroll toggle when provided (offline
+  /// biometric-unlocked sessions have no fresh [userId] to enroll, so callers
+  /// may omit [biometric] there).
+  final BiometricUnlock? biometric;
+  final String? userId;
   const VaultScreen({
     super.key,
     required this.vault,
@@ -24,6 +31,8 @@ class VaultScreen extends StatefulWidget {
     this.onScanToApprove,
     this.onOpenRecoverySetup,
     this.onOpenEmergencyContacts,
+    this.biometric,
+    this.userId,
   });
 
   @override
@@ -33,6 +42,40 @@ class VaultScreen extends StatefulWidget {
 class _VaultScreenState extends State<VaultScreen> {
   String _filter = '';
   String _status = '';
+  bool _bioEnrolled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.biometric?.isEnrolled().then((v) {
+      if (mounted) setState(() => _bioEnrolled = v);
+    });
+  }
+
+  Future<void> _toggleBiometric() async {
+    final bio = widget.biometric;
+    if (bio == null) return;
+    if (_bioEnrolled) {
+      await bio.unenroll();
+      setState(() {
+        _bioEnrolled = false;
+        _status = 'Biometric unlock disabled';
+      });
+      return;
+    }
+    final key = widget.vault.snapshotKey();
+    try {
+      await bio.enroll(key, widget.vault.saltB64, widget.userId, widget.email);
+      setState(() {
+        _bioEnrolled = true;
+        _status = 'Biometric unlock enabled';
+      });
+    } catch (_) {
+      setState(() => _status = 'Biometric unlock unavailable on this device');
+    } finally {
+      zeroKey(key);
+    }
+  }
 
   List<VaultItem> get _items {
     final q = _filter.trim().toLowerCase();
@@ -159,6 +202,15 @@ class _VaultScreenState extends State<VaultScreen> {
                       child: Text('Emergency contacts')),
               ],
             ),
+          if (widget.biometric != null)
+            IconButton(
+                key: const Key('bioToggleBtn'),
+                tooltip: _bioEnrolled
+                    ? 'Disable biometric unlock'
+                    : 'Enable biometric unlock',
+                onPressed: _toggleBiometric,
+                icon: Icon(Icons.fingerprint,
+                    color: _bioEnrolled ? const Color(0xFF8B5CF6) : null)),
           IconButton(
               key: const Key('syncBtn'),
               tooltip: 'Sync',

@@ -112,9 +112,10 @@ class VaultApp {
     _key = key;
   }
 
-  /// A COPY of the live master key, for wrapping under a recovery key or an
-  /// emergency contact's public key. The caller owns the copy and must zero
-  /// it once it's done (see `vault_crypto.zeroKey`).
+  /// A COPY of the live master key, for wrapping behind the OS keystore
+  /// (biometric unlock), a recovery key, or an emergency contact's public
+  /// key. The caller owns the copy and must zero it once it's done (see
+  /// `vault_crypto.zeroKey`).
   Uint8List snapshotKey() => Uint8List.fromList(_requireKey());
 
   /// Re-encrypt the ENTIRE vault under a new key — e.g. after a recovery-key

@@ -1,0 +1,30 @@
+name: vaultkeep_mobile
+description: VaultKeep mobile (iOS/Android) — zero-knowledge vault client.
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Pure-Dart Argon2id / AES-GCM / HMAC — byte-compatible with @vaultkeep/crypto
+  # (proven by test/crypto_compat_test.dart against node-generated vectors).
+  cryptography: ^2.7.0
+  http: ^1.2.0
+  path_provider: ^2.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+dependency_overrides:
+  # 2.6+ pulls the objective_c native-assets hook, whose build breaks on
+  # Windows paths containing spaces (it is iOS/macOS-only code anyway).
+  # 2.4.x is the last pigeon-based implementation and works identically.
+  path_provider_foundation: 2.4.1
+
+flutter:
+  uses-material-design: true

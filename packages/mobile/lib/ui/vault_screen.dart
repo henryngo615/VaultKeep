@@ -11,6 +11,9 @@ class VaultScreen extends StatefulWidget {
   final VaultApp vault;
   final String email;
   final VoidCallback onLock;
+  /// Opens the QR scanner to approve a new device. Omitted for sessions that
+  /// can't approve anyone (no live token — e.g. an offline biometric unlock).
+  final VoidCallback? onScanToApprove;
   /// Enables the biometric enroll/unenroll toggle when provided (offline
   /// biometric-unlocked sessions have no fresh [userId] to enroll, so callers
   /// may omit [biometric] there).
@@ -21,6 +24,7 @@ class VaultScreen extends StatefulWidget {
     required this.vault,
     required this.email,
     required this.onLock,
+    this.onScanToApprove,
     this.biometric,
     this.userId,
   });
@@ -166,6 +170,12 @@ class _VaultScreenState extends State<VaultScreen> {
       appBar: AppBar(
         title: Text(widget.email, style: const TextStyle(fontSize: 14)),
         actions: [
+          if (widget.onScanToApprove != null)
+            IconButton(
+                key: const Key('scanToApproveBtn'),
+                tooltip: 'Approve a device',
+                onPressed: widget.onScanToApprove,
+                icon: const Icon(Icons.qr_code_scanner)),
           if (widget.biometric != null)
             IconButton(
                 key: const Key('bioToggleBtn'),

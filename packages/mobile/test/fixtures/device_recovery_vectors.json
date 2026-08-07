@@ -1,0 +1,51 @@
+{
+  "signing": {
+    "publicKeyDer": "MCowBQYDK2VwAyEAzaCuZTQa4g4HOU1tsDE4PVISYne7T6rtO7/WH+Nhdlc=",
+    "publicKeyRaw": "zaCuZTQa4g4HOU1tsDE4PVISYne7T6rtO7/WH+Nhdlc=",
+    "privateKeyDer": "MC4CAQAwBQYDK2VwBCIEIFrVGSx/91TJmjqi59Ay0Xoprq0sAHL48W3zCjnHe1Fo",
+    "privateKeyRaw": "WtUZLH/3VMmaOqLn0DLReimurSwAcvjxbfMKOcd7UWg=",
+    "message": "approve-device:11111111-2222-3333-4444-555555555555",
+    "signature": "doE5+tGJD40rPQ6Qs14ahFJwEm+a7C+lISQs4tc3zZKNJPIrL/9y6yr/QtmGeymU7N92AVe0AlsHCME3LlT5DQ=="
+  },
+  "signingOther": {
+    "publicKeyDer": "MCowBQYDK2VwAyEAOHVf9licgboz2I7osK11XYX+Bajn+SeuZpgYyD6zjQc=",
+    "publicKeyRaw": "OHVf9licgboz2I7osK11XYX+Bajn+SeuZpgYyD6zjQc=",
+    "privateKeyDer": "MC4CAQAwBQYDK2VwBCIEIG+Z518LV4ARtj7RFlkNPW9DR1eV4GfJ2Rgrfb6wYpUn",
+    "privateKeyRaw": "b5nnXwtXgBG2PtEWWQ09b0NHV5XgZ8nZGCt9vrBilSc="
+  },
+  "exchange": {
+    "alicePublicKeyDer": "MCowBQYDK2VuAyEAzBLMGJaw6UrptptaYsNe6GqIUxBCTxHFA7txEFk9Jjs=",
+    "alicePublicKeyRaw": "zBLMGJaw6UrptptaYsNe6GqIUxBCTxHFA7txEFk9Jjs=",
+    "alicePrivateKeyDer": "MC4CAQAwBQYDK2VuBCIEIPAoaRGMwznaJjZP/Z8wWwMtzZV+yl+gjLfCOunhzup5",
+    "alicePrivateKeyRaw": "8ChpEYzDOdomNk/9nzBbAy3NlX7KX6CMt8I66eHO6nk=",
+    "bobPublicKeyDer": "MCowBQYDK2VuAyEAgLYBHhoQyyc3rkKog7M46/C/gEAnmqOCeEJyZIx8VVs=",
+    "bobPublicKeyRaw": "gLYBHhoQyyc3rkKog7M46/C/gEAnmqOCeEJyZIx8VVs=",
+    "bobPrivateKeyDer": "MC4CAQAwBQYDK2VuBCIEIFj7hjTBbXjVBVyBELnBl1vVuDTi9a1PkAxbr3fWAEFr",
+    "bobPrivateKeyRaw": "WPuGNMFteNUFXIEQucGXW9W4NOL1rU+QDFuvd9YAQWs=",
+    "sharedSecret": "DAQqTpiYBQvQW8Wu7fliv/ULYGXYgFqfuslWsAwKbR0="
+  },
+  "recovery": {
+    "recoveryKey": "VK-GGTRZ-DZDVB-RN8K5-N7JGG-AJG9H",
+    "normalized": "GGTRZDZDVBRN8K5N7JGGAJG9H",
+    "saltB64": "q83vASNFZ4mrze8BI0VniQ==",
+    "authVerifier": "Rbw1ZIA7qZCvT2czVhktsfMvNSnjBcoGNMgT0h9dfow=",
+    "wrapKeyB64": "xZJZmOe2IaXvSunZeq9eJjEvU3bw1tXnLsFJEBu6yR4=",
+    "masterKeyB64": "mKNM8tVlFGSgUkRtrhMh0P+5sHP4y9NnndSP5NJuJPY=",
+    "wrappedBlob": "uX2S3/Gnj11f2jWGZGVpM+OSbqRrlwuTnVC62sLReAYnI+Sa/eDA0wur5bD+gaO78StYHLENl6MKncZsampHn5jIrG7/TUlh"
+  },
+  "recoveryMessyInput": {
+    "messy": "  vk-ggtrz -- dzdvb -- rn8k5 -- n7jgg -- ajg9h ",
+    "expectAuthVerifier": "Rbw1ZIA7qZCvT2czVhktsfMvNSnjBcoGNMgT0h9dfow=",
+    "expectWrapKeyB64": "xZJZmOe2IaXvSunZeq9eJjEvU3bw1tXnLsFJEBu6yR4="
+  },
+  "emergencyContact": {
+    "contactPublicKeyDer": "MCowBQYDK2VuAyEATMApJ2jhnbtQUL14e04SNOPr202xxGR62UwUK4cveAU=",
+    "contactPublicKeyRaw": "TMApJ2jhnbtQUL14e04SNOPr202xxGR62UwUK4cveAU=",
+    "contactPrivateKeyDer": "MC4CAQAwBQYDK2VuBCIEIBDD5v+g7fIDyi9hrX4E+Rgb/pSIyugWjc4R1ZvJ655U",
+    "contactPrivateKeyRaw": "EMPm/6Dt8gPKL2GtfgT5GBv+lIjK6BaNzhHVm8nrnlQ=",
+    "masterKeyB64": "mKNM8tVlFGSgUkRtrhMh0P+5sHP4y9NnndSP5NJuJPY=",
+    "ephemeralPublicKeyDer": "MCowBQYDK2VuAyEATYJXbKjEDPOu3McKL8XK/qHKmX5HEwYHFyCsqxnCwQw=",
+    "ephemeralPublicKeyRaw": "TYJXbKjEDPOu3McKL8XK/qHKmX5HEwYHFyCsqxnCwQw=",
+    "blob": "jjiylLEBoRBsbGODm3crHBbLGcVqqp/s4km8AEIZjB2i/GVZf3uxJy2IU7o3wunCgt9Z6tBRQAT21o+suKVgrLoR2MR/CFtc"
+  }
+}

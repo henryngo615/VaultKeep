@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import 'core/auth_client.dart';
@@ -10,6 +12,8 @@ import 'core/sync_client.dart';
 import 'core/vault_app.dart';
 import 'platform/biometric_platform.dart';
 import 'ui/biometric_unlock_screen.dart';
+import 'ui/pair_new_device_screen.dart';
+import 'ui/scan_to_approve_screen.dart';
 import 'ui/sign_in_screen.dart';
 import 'ui/vault_screen.dart';
 
@@ -50,11 +54,17 @@ class _RootState extends State<_Root> {
 
   VaultApp? _vault;
   Session? _session;
+  String? _serverUrl;
   String? _offlineEmail;
   String? _offlineUserId;
   bool _checkingEnrollment = true;
   bool _bioEnrolled = false;
   bool _forcePassword = false;
+
+  // Set while this device is signed in but not yet approved — see
+  // PairNewDeviceScreen's doc comment for why a live session can exist here.
+  Session? _pendingSession;
+  VaultApp? _pendingVault;
 
   @override
   void initState() {
@@ -84,14 +94,55 @@ class _RootState extends State<_Root> {
       kdf: session.kdf,
     );
     await vault.unlockWithKey(session.key);
+
+    if (await _isDeviceApproved(serverUrl, session.token)) {
+      try {
+        await vault.sync();
+      } catch (_) {/* offline-tolerant */}
+      setState(() {
+        _session = session;
+        _serverUrl = serverUrl;
+        _offlineEmail = null;
+        _offlineUserId = null;
+        _vault = vault;
+      });
+      return;
+    }
+    setState(() {
+      _pendingSession = session;
+      _pendingVault = vault;
+      _serverUrl = serverUrl;
+    });
+  }
+
+  Future<bool> _isDeviceApproved(String serverUrl, String token) async {
     try {
-      await vault.sync();
-    } catch (_) {/* offline-tolerant */}
+      final res = await http.get(
+        Uri.parse('$serverUrl/devices'),
+        headers: {'authorization': 'Bearer $token'},
+      );
+      return res.statusCode == 200;
+    } catch (_) {
+      return true; // offline: don't block behind a pairing screen either way
+    }
+  }
+
+  void _finishPendingSignIn() {
+    final session = _pendingSession;
+    final vault = _pendingVault;
+    if (session == null || vault == null) return;
+    unawaited(() async {
+      try {
+        await vault.sync();
+      } catch (_) {/* offline-tolerant */}
+    }());
     setState(() {
       _session = session;
       _offlineEmail = null;
       _offlineUserId = null;
       _vault = vault;
+      _pendingSession = null;
+      _pendingVault = null;
     });
   }
 
@@ -106,9 +157,12 @@ class _RootState extends State<_Root> {
     await vault.unlockWithKey(recovered.key);
     setState(() {
       _session = null;
+      _serverUrl = null;
       _offlineEmail = recovered.email;
       _offlineUserId = recovered.userId;
       _vault = vault;
+      _pendingSession = null;
+      _pendingVault = null;
     });
   }
 
@@ -117,6 +171,7 @@ class _RootState extends State<_Root> {
     setState(() {
       _vault = null;
       _session = null;
+      _serverUrl = null;
       _offlineEmail = null;
       _offlineUserId = null;
       _forcePassword = false;
@@ -126,14 +181,30 @@ class _RootState extends State<_Root> {
 
   @override
   Widget build(BuildContext context) {
+    final pendingSession = _pendingSession;
+    if (pendingSession != null) {
+      return PairNewDeviceScreen(
+        baseUrl: _serverUrl!,
+        session: pendingSession,
+        onApproved: _finishPendingSignIn,
+        onSkip: _finishPendingSignIn,
+      );
+    }
     final vault = _vault;
     if (vault != null && vault.isUnlocked) {
+      final session = _session;
       return VaultScreen(
         vault: vault,
-        email: _session?.email ?? _offlineEmail ?? 'VaultKeep',
-        userId: _session?.userId ?? _offlineUserId,
+        email: session?.email ?? _offlineEmail ?? 'VaultKeep',
+        userId: session?.userId ?? _offlineUserId,
         biometric: _biometric,
         onLock: _onLock,
+        onScanToApprove: session == null
+            ? null
+            : () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) =>
+                      ScanToApproveScreen(baseUrl: _serverUrl!, session: session),
+                )),
       );
     }
     if (_checkingEnrollment) {

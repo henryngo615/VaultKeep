@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -9,7 +10,9 @@ import 'core/auth_client.dart';
 import 'core/local_store.dart';
 import 'core/sync_client.dart';
 import 'core/vault_app.dart';
+import 'ui/emergency_contacts_screen.dart';
 import 'ui/pair_new_device_screen.dart';
+import 'ui/recovery_setup_screen.dart';
 import 'ui/scan_to_approve_screen.dart';
 import 'ui/sign_in_screen.dart';
 import 'ui/vault_screen.dart';
@@ -55,7 +58,23 @@ class _RootState extends State<_Root> {
   Session? _pendingSession;
   VaultApp? _pendingVault;
 
-  Future<void> _onSignedIn(Session session, String serverUrl) async {
+  Future<void> _onSignedIn(Session session, String serverUrl) =>
+      _handleSignedIn(session, serverUrl);
+
+  /// After a recovery-key password reset: the fresh session's key is the
+  /// NEW master key, but the local cache and whatever the server holds are
+  /// still ciphertext under the OLD one. Unlock with the old key, pull
+  /// whatever the server has (also still under the old key), THEN re-encrypt
+  /// everything and push it back — see `VaultApp.rekey`.
+  Future<void> _onRecoveredSignIn(
+          Session session, Uint8List oldMasterKey, String serverUrl) =>
+      _handleSignedIn(session, serverUrl, oldMasterKeyForRekey: oldMasterKey);
+
+  Future<void> _handleSignedIn(
+    Session session,
+    String serverUrl, {
+    Uint8List? oldMasterKeyForRekey,
+  }) async {
     final dir = await getApplicationSupportDirectory();
     // Per-account vault file so switching accounts never mixes ciphertext.
     final store =
@@ -66,7 +85,16 @@ class _RootState extends State<_Root> {
       HttpTransport(serverUrl, session.token),
       kdf: session.kdf,
     );
-    await vault.unlockWithKey(session.key);
+
+    if (oldMasterKeyForRekey != null) {
+      await vault.unlockWithKey(oldMasterKeyForRekey);
+      try {
+        await vault.sync();
+      } catch (_) {/* offline-tolerant */}
+      await vault.rekey(session.key);
+    } else {
+      await vault.unlockWithKey(session.key);
+    }
 
     if (await _isDeviceApproved(serverUrl, session.token)) {
       try {
@@ -137,7 +165,7 @@ class _RootState extends State<_Root> {
     }
     final vault = _vault;
     if (vault == null || !vault.isUnlocked) {
-      return SignInScreen(onSignedIn: _onSignedIn);
+      return SignInScreen(onSignedIn: _onSignedIn, onRecovered: _onRecoveredSignIn);
     }
     return VaultScreen(
       vault: vault,
@@ -146,6 +174,14 @@ class _RootState extends State<_Root> {
       onScanToApprove: () => Navigator.of(context).push(MaterialPageRoute(
         builder: (_) =>
             ScanToApproveScreen(baseUrl: _serverUrl!, session: _session!),
+      )),
+      onOpenRecoverySetup: () => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => RecoverySetupScreen(
+            vault: vault, serverUrl: _serverUrl!, token: _session!.token),
+      )),
+      onOpenEmergencyContacts: () => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => EmergencyContactsScreen(
+            vault: vault, serverUrl: _serverUrl!, token: _session!.token),
       )),
     );
   }

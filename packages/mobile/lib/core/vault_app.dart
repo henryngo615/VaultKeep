@@ -112,6 +112,27 @@ class VaultApp {
     _key = key;
   }
 
+  /// A COPY of the live master key, for wrapping under a recovery key or an
+  /// emergency contact's public key. The caller owns the copy and must zero
+  /// it once it's done (see `vault_crypto.zeroKey`).
+  Uint8List snapshotKey() => Uint8List.fromList(_requireKey());
+
+  /// Re-encrypt the ENTIRE vault under a new key — e.g. after a recovery-key
+  /// password reset, where whatever is cached locally (and whatever the
+  /// server holds) is still ciphertext under the OLD key. Marks every item
+  /// dirty so the next `sync()` re-pushes each item under the new key; the
+  /// server's copies would otherwise be permanently unreadable by this key.
+  Future<void> rekey(Uint8List newKey) async {
+    final oldKey = _requireKey();
+    if (newKey.length != 32) throw ArgumentError('master key must be 32 bytes');
+    for (final meta in _meta.values) {
+      meta.dirty = true;
+    }
+    zeroKey(oldKey);
+    _key = newKey;
+    await _persist();
+  }
+
   /// Wipe the key and plaintext from memory.
   void lock() {
     if (_key != null) zeroKey(_key!);

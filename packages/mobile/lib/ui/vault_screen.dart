@@ -12,12 +12,18 @@ class VaultScreen extends StatefulWidget {
   /// Opens the QR scanner to approve a new device. Omitted for sessions that
   /// can't approve anyone (no live token — e.g. an offline biometric unlock).
   final VoidCallback? onScanToApprove;
+  /// Opens recovery-key setup / emergency-contact management. Both need a
+  /// live token, so both are omitted together for offline sessions.
+  final VoidCallback? onOpenRecoverySetup;
+  final VoidCallback? onOpenEmergencyContacts;
   const VaultScreen({
     super.key,
     required this.vault,
     required this.email,
     required this.onLock,
     this.onScanToApprove,
+    this.onOpenRecoverySetup,
+    this.onOpenEmergencyContacts,
   });
 
   @override
@@ -133,6 +139,26 @@ class _VaultScreenState extends State<VaultScreen> {
                 tooltip: 'Approve a device',
                 onPressed: widget.onScanToApprove,
                 icon: const Icon(Icons.qr_code_scanner)),
+          if (widget.onOpenRecoverySetup != null || widget.onOpenEmergencyContacts != null)
+            PopupMenuButton<String>(
+              key: const Key('accountMenu'),
+              onSelected: (v) {
+                if (v == 'recovery') widget.onOpenRecoverySetup?.call();
+                if (v == 'emergency') widget.onOpenEmergencyContacts?.call();
+              },
+              itemBuilder: (ctx) => [
+                if (widget.onOpenRecoverySetup != null)
+                  const PopupMenuItem(
+                      key: Key('recoveryMenuItem'),
+                      value: 'recovery',
+                      child: Text('Recovery key')),
+                if (widget.onOpenEmergencyContacts != null)
+                  const PopupMenuItem(
+                      key: Key('emergencyMenuItem'),
+                      value: 'emergency',
+                      child: Text('Emergency contacts')),
+              ],
+            ),
           IconButton(
               key: const Key('syncBtn'),
               tooltip: 'Sync',

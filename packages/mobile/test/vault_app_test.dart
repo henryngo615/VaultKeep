@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -102,5 +103,63 @@ void main() {
     // Everyone converges after one more pull.
     await laptop.sync();
     expect(laptop.list().length, 2);
+  });
+
+  test('snapshotKey returns an independent copy of the live master key',
+      () async {
+    final app = VaultApp(salt, MemoryStore(), null, kdf: fastKdf);
+    final key = await deriveMasterKey('pw', salt, fastKdf);
+    await app.unlockWithKey(key);
+    final snapshot = app.snapshotKey();
+    expect(snapshot, key);
+    snapshot.fillRange(0, snapshot.length, 0);
+    // Mutating the snapshot must not zero the vault's own live key.
+    expect(key.every((b) => b == 0), false);
+  });
+
+  group('rekey (recovery-key password reset)', () {
+    test(
+        're-encrypts the local blob and re-pushes every item under the new key',
+        () async {
+      final server = FakeServer();
+      final store = MemoryStore();
+      final app = VaultApp(salt, store, server, kdf: fastKdf);
+      await app.unlock('old password');
+      final item =
+          await app.add(title: 'GitHub', username: 'henry', password: 'gh-secret');
+      await app.sync();
+      final versionBefore = server.rows[item.id]!.version;
+
+      final newKey = await deriveMasterKey('new password', salt, fastKdf);
+      await app.rekey(newKey);
+
+      // The item was marked dirty by rekey, so syncing again re-pushes it —
+      // the server's old copy is ciphertext under a key nobody has anymore.
+      final s = await app.sync();
+      expect(s.pushed, 1);
+      expect(server.rows[item.id]!.version, greaterThan(versionBefore));
+
+      // A fresh app unlocked with the NEW key reads the same item back.
+      final reopened = VaultApp(salt, store, server, kdf: fastKdf);
+      await reopened.unlockWithKey(newKey);
+      expect(reopened.list().single.password, 'gh-secret');
+
+      // The OLD password can no longer open the (now re-keyed) local blob.
+      final stale = VaultApp(salt, store, server, kdf: fastKdf);
+      expect(() => stale.unlock('old password'),
+          throwsA(isA<SecretBoxAuthenticationError>()));
+    });
+
+    test('rekeying a locked vault throws', () async {
+      final app = VaultApp(salt, MemoryStore(), null, kdf: fastKdf);
+      final key = await deriveMasterKey('x', salt, fastKdf);
+      expect(() => app.rekey(key), throwsStateError);
+    });
+
+    test('rejects a malformed replacement key', () async {
+      final app = VaultApp(salt, MemoryStore(), null, kdf: fastKdf);
+      await app.unlock('pw');
+      expect(() => app.rekey(Uint8List(16)), throwsArgumentError);
+    });
   });
 }

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:vaultkeep_mobile/core/auth_client.dart';
+import 'package:vaultkeep_mobile/core/devicekeys.dart';
 import 'package:vaultkeep_mobile/core/vault_crypto.dart';
 
 const salt = 'q83vASNFZ4mrze8BI0VniQ==';
@@ -71,7 +72,8 @@ void main() {
 
     final session = await auth.login('me@x.com', 'pw one', '123456');
     expect(server.deviceEnrolled, true);
-    expect(await devices.load('me@x.com'), 'dev-phone');
+    expect((await devices.load('me@x.com'))!.deviceId, 'dev-phone');
+    expect(session.device.deviceId, 'dev-phone');
     expect(session.token, 'full');
     expect(session.saltB64, salt);
     // The session key is the real derived master key, ready for the vault.
@@ -79,10 +81,41 @@ void main() {
     expect(base64.encode(session.key), base64.encode(expected));
   });
 
+  test('enrollment generates a REAL, independently-verifiable signing key '
+      '(not a placeholder — the server verifies future approvals against it)',
+      () async {
+    final server = FakeAuthServer('me@x.com', await verifierFor('pw one'));
+    final devices = MemoryDeviceStore();
+    final auth = AuthClient('http://x', devices, client: server.client());
+    final session = await auth.login('me@x.com', 'pw one', '123456');
+
+    final sig = await signMessage(session.device.signingPrivateKey, 'approve-device:some-id');
+    expect(
+      await verifyMessage(session.device.signingPublicKey, 'approve-device:some-id', sig),
+      true,
+    );
+    // A different keypair must NOT verify this signature.
+    final other = await generateSigningKeys();
+    expect(
+      await verifyMessage(other.publicKey, 'approve-device:some-id', sig),
+      false,
+    );
+  });
+
   test('a known device skips enrollment', () async {
     final server = FakeAuthServer('me@x.com', await verifierFor('pw one'));
     final devices = MemoryDeviceStore();
-    await devices.save('me@x.com', 'dev-phone');
+    await devices.save(
+      'me@x.com',
+      DeviceIdentity(
+        deviceId: 'dev-phone',
+        name: 'Mobile',
+        signingPublicKey: 'spk',
+        signingPrivateKey: 'spriv',
+        exchangePublicKey: 'epk',
+        exchangePrivateKey: 'epriv',
+      ),
+    );
     final auth = AuthClient('http://x', devices, client: server.client());
     await auth.login('me@x.com', 'pw one', '123456');
     expect(server.log, isNot(contains('/devices/enroll')));

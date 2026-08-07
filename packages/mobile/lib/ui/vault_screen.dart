@@ -9,11 +9,15 @@ class VaultScreen extends StatefulWidget {
   final VaultApp vault;
   final String email;
   final VoidCallback onLock;
+  /// Opens the QR scanner to approve a new device. Omitted for sessions that
+  /// can't approve anyone (no live token — e.g. an offline biometric unlock).
+  final VoidCallback? onScanToApprove;
   const VaultScreen({
     super.key,
     required this.vault,
     required this.email,
     required this.onLock,
+    this.onScanToApprove,
   });
 
   @override
@@ -123,6 +127,12 @@ class _VaultScreenState extends State<VaultScreen> {
       appBar: AppBar(
         title: Text(widget.email, style: const TextStyle(fontSize: 14)),
         actions: [
+          if (widget.onScanToApprove != null)
+            IconButton(
+                key: const Key('scanToApproveBtn'),
+                tooltip: 'Approve a device',
+                onPressed: widget.onScanToApprove,
+                icon: const Icon(Icons.qr_code_scanner)),
           IconButton(
               key: const Key('syncBtn'),
               tooltip: 'Sync',

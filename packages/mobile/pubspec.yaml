@@ -14,6 +14,10 @@ dependencies:
   cryptography: ^2.7.0
   http: ^1.2.0
   path_provider: ^2.1.0
+  # QR device pairing: qr_flutter renders the code on the new (pending)
+  # device, mobile_scanner reads it on an already-trusted device's camera.
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.2.3
 
 dev_dependencies:
   flutter_test:

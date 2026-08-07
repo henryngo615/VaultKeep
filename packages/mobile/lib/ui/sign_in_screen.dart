@@ -207,7 +207,11 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 }
 
-/// Device handles persisted as a tiny JSON file (non-secret).
+/// Device identities persisted as a tiny JSON file. Not secret-free like the
+/// old deviceId-only version — this now includes each account's signing/
+/// exchange PRIVATE keys, so unlike the vault blob this file deliberately
+/// lives unencrypted (there's no master key available before sign-in to
+/// protect it with), same tradeoff desktop's on-disk `device.json` makes.
 class _FileDeviceStore implements DeviceStore {
   final LocalStore store;
   _FileDeviceStore(this.store);
@@ -223,13 +227,16 @@ class _FileDeviceStore implements DeviceStore {
   }
 
   @override
-  Future<String?> load(String email) async =>
-      (await _read())[email.toLowerCase()] as String?;
+  Future<DeviceIdentity?> load(String email) async {
+    final j = (await _read())[email.toLowerCase()];
+    if (j == null) return null;
+    return DeviceIdentity.fromJson(Map<String, dynamic>.from(j as Map));
+  }
 
   @override
-  Future<void> save(String email, String deviceId) async {
+  Future<void> save(String email, DeviceIdentity identity) async {
     final m = await _read();
-    m[email.toLowerCase()] = deviceId;
+    m[email.toLowerCase()] = identity.toJson();
     await store.writeRaw(jsonEncode(m));
   }
 }

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
+import 'devicekeys.dart' as devicekeys;
 import 'vault_crypto.dart';
 
 /// Zero-knowledge auth against the sync server — same flow as web/extension:
@@ -17,6 +18,10 @@ class Session {
   final String saltB64;
   final KdfParams kdf;
   final Uint8List key;
+  /// This device's own identity — needed to show a QR pairing code for
+  /// itself while pending, or to sign approvals for OTHER devices once this
+  /// one is trusted.
+  final DeviceIdentity device;
   Session({
     required this.token,
     required this.userId,
@@ -24,6 +29,7 @@ class Session {
     required this.saltB64,
     required this.kdf,
     required this.key,
+    required this.device,
   });
 }
 
@@ -34,19 +40,58 @@ class AuthException implements Exception {
   String toString() => message;
 }
 
-/// Persists this phone's non-secret device handle per email.
+/// This device's enrollment: the server-assigned id plus the REAL X25519/
+/// Ed25519 keypairs generated at enrollment time. The private halves never
+/// leave the device — persisted locally (see `DeviceStore`) so this device
+/// can later sign `approve-device:<id>` for a new device it trusts (QR
+/// pairing), the same way desktop's `DeviceIdentity` works.
+class DeviceIdentity {
+  final String deviceId;
+  final String name;
+  final String signingPublicKey;
+  final String signingPrivateKey;
+  final String exchangePublicKey;
+  final String exchangePrivateKey;
+  DeviceIdentity({
+    required this.deviceId,
+    required this.name,
+    required this.signingPublicKey,
+    required this.signingPrivateKey,
+    required this.exchangePublicKey,
+    required this.exchangePrivateKey,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'deviceId': deviceId,
+        'name': name,
+        'signingPublicKey': signingPublicKey,
+        'signingPrivateKey': signingPrivateKey,
+        'exchangePublicKey': exchangePublicKey,
+        'exchangePrivateKey': exchangePrivateKey,
+      };
+  factory DeviceIdentity.fromJson(Map<String, dynamic> j) => DeviceIdentity(
+        deviceId: j['deviceId'] as String,
+        name: j['name'] as String,
+        signingPublicKey: j['signingPublicKey'] as String,
+        signingPrivateKey: j['signingPrivateKey'] as String,
+        exchangePublicKey: j['exchangePublicKey'] as String,
+        exchangePrivateKey: j['exchangePrivateKey'] as String,
+      );
+}
+
+/// Persists this phone's device identity (id + keys) per email.
 abstract class DeviceStore {
-  Future<String?> load(String email);
-  Future<void> save(String email, String deviceId);
+  Future<DeviceIdentity?> load(String email);
+  Future<void> save(String email, DeviceIdentity identity);
 }
 
 class MemoryDeviceStore implements DeviceStore {
-  final Map<String, String> _m = {};
+  final Map<String, DeviceIdentity> _m = {};
   @override
-  Future<String?> load(String email) async => _m[email.toLowerCase()];
+  Future<DeviceIdentity?> load(String email) async => _m[email.toLowerCase()];
   @override
-  Future<void> save(String email, String deviceId) async =>
-      _m[email.toLowerCase()] = deviceId;
+  Future<void> save(String email, DeviceIdentity identity) async =>
+      _m[email.toLowerCase()] = identity;
 }
 
 class RegistrationStart {
@@ -125,26 +170,38 @@ class AuthClient {
     final key = await deriveMasterKey(password, salt, params);
     final verifier = await deriveAuthVerifier(key, password);
 
-    var deviceId = await devices.load(email);
+    var identity = await devices.load(email);
     var login = await _post('/auth/login', {
       'email': email,
       'authVerifier': verifier,
-      if (deviceId != null) 'deviceId': deviceId,
+      if (identity != null) 'deviceId': identity.deviceId,
     });
     if (login['_status'] == 200 && login['needsDevice'] == true) {
-      // Fresh phone: enroll as a device, then log in properly. Placeholder
-      // keys, like web/extension — this device authenticates password+TOTP.
-      String rand() => base64
-          .encode(List<int>.generate(32, (_) => Random.secure().nextInt(256)));
+      // Fresh phone: generate REAL device keys and enroll. The signing key
+      // is what lets this device later approve — or, via QR pairing, prove
+      // its own identity while pending — a real Ed25519/X25519 keypair, not
+      // a placeholder, since the server verifies approval signatures against
+      // whatever public key was registered here.
+      const name = 'Mobile';
+      final exchange = await devicekeys.generateExchangeKeys();
+      final signing = await devicekeys.generateSigningKeys();
       final dev = await _post('/devices/enroll', {
         'userId': login['userId'],
-        'name': 'Mobile',
+        'name': name,
         'platform': 'mobile',
-        'publicKey': rand(),
-        'signingPublicKey': rand(),
+        'publicKey': exchange.publicKey,
+        'signingPublicKey': signing.publicKey,
       });
-      deviceId = (dev['device'] as Map<String, dynamic>)['id'] as String;
-      await devices.save(email, deviceId);
+      final deviceId = (dev['device'] as Map<String, dynamic>)['id'] as String;
+      identity = DeviceIdentity(
+        deviceId: deviceId,
+        name: name,
+        signingPublicKey: signing.publicKey,
+        signingPrivateKey: signing.privateKey,
+        exchangePublicKey: exchange.publicKey,
+        exchangePrivateKey: exchange.privateKey,
+      );
+      await devices.save(email, identity);
       login = await _post('/auth/login', {
         'email': email,
         'authVerifier': verifier,
@@ -169,6 +226,7 @@ class AuthClient {
       saltB64: salt,
       kdf: params,
       key: key,
+      device: identity!,
     );
   }
 }

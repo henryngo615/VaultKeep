@@ -6,9 +6,12 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import 'core/auth_client.dart';
+import 'core/biometric.dart';
 import 'core/local_store.dart';
 import 'core/sync_client.dart';
 import 'core/vault_app.dart';
+import 'platform/biometric_platform.dart';
+import 'ui/biometric_unlock_screen.dart';
 import 'ui/pair_new_device_screen.dart';
 import 'ui/scan_to_approve_screen.dart';
 import 'ui/sign_in_screen.dart';
@@ -46,14 +49,38 @@ class _Root extends StatefulWidget {
 }
 
 class _RootState extends State<_Root> {
+  final _biometric =
+      BiometricUnlock(PlatformSecureEnclave(), SecureStorageTokenStore());
+
   VaultApp? _vault;
   Session? _session;
   String? _serverUrl;
+  String? _offlineEmail;
+  String? _offlineUserId;
+  bool _checkingEnrollment = true;
+  bool _bioEnrolled = false;
+  bool _forcePassword = false;
 
   // Set while this device is signed in but not yet approved — see
   // PairNewDeviceScreen's doc comment for why a live session can exist here.
   Session? _pendingSession;
   VaultApp? _pendingVault;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshEnrollment();
+  }
+
+  Future<void> _refreshEnrollment() async {
+    final enrolled = await _biometric.isEnrolled();
+    if (mounted) {
+      setState(() {
+        _bioEnrolled = enrolled;
+        _checkingEnrollment = false;
+      });
+    }
+  }
 
   Future<void> _onSignedIn(Session session, String serverUrl) async {
     final dir = await getApplicationSupportDirectory();
@@ -75,6 +102,8 @@ class _RootState extends State<_Root> {
       setState(() {
         _session = session;
         _serverUrl = serverUrl;
+        _offlineEmail = null;
+        _offlineUserId = null;
         _vault = vault;
       });
       return;
@@ -109,6 +138,28 @@ class _RootState extends State<_Root> {
     }());
     setState(() {
       _session = session;
+      _offlineEmail = null;
+      _offlineUserId = null;
+      _vault = vault;
+      _pendingSession = null;
+      _pendingVault = null;
+    });
+  }
+
+  /// Biometric unlock never touches the network — same as desktop's "offline
+  /// unlock of the enrolled vault": no transport, so `sync()` is skipped
+  /// until the next full password sign-in re-establishes a token.
+  Future<void> _onBiometricUnlocked(RecoveredKey recovered) async {
+    final dir = await getApplicationSupportDirectory();
+    final fileName = recovered.userId != null ? '${recovered.userId}.enc' : 'vault.enc';
+    final store = FileStore('${dir.path}${Platform.pathSeparator}$fileName');
+    final vault = VaultApp(recovered.saltB64, store, null);
+    await vault.unlockWithKey(recovered.key);
+    setState(() {
+      _session = null;
+      _serverUrl = null;
+      _offlineEmail = recovered.email;
+      _offlineUserId = recovered.userId;
       _vault = vault;
       _pendingSession = null;
       _pendingVault = null;
@@ -121,7 +172,11 @@ class _RootState extends State<_Root> {
       _vault = null;
       _session = null;
       _serverUrl = null;
+      _offlineEmail = null;
+      _offlineUserId = null;
+      _forcePassword = false;
     });
+    _refreshEnrollment();
   }
 
   @override
@@ -136,17 +191,32 @@ class _RootState extends State<_Root> {
       );
     }
     final vault = _vault;
-    if (vault == null || !vault.isUnlocked) {
-      return SignInScreen(onSignedIn: _onSignedIn);
+    if (vault != null && vault.isUnlocked) {
+      final session = _session;
+      return VaultScreen(
+        vault: vault,
+        email: session?.email ?? _offlineEmail ?? 'VaultKeep',
+        userId: session?.userId ?? _offlineUserId,
+        biometric: _biometric,
+        onLock: _onLock,
+        onScanToApprove: session == null
+            ? null
+            : () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) =>
+                      ScanToApproveScreen(baseUrl: _serverUrl!, session: session),
+                )),
+      );
     }
-    return VaultScreen(
-      vault: vault,
-      email: _session!.email,
-      onLock: _onLock,
-      onScanToApprove: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) =>
-            ScanToApproveScreen(baseUrl: _serverUrl!, session: _session!),
-      )),
-    );
+    if (_checkingEnrollment) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (_bioEnrolled && !_forcePassword) {
+      return BiometricUnlockScreen(
+        biometric: _biometric,
+        onUnlocked: _onBiometricUnlocked,
+        onUsePassword: () => setState(() => _forcePassword = true),
+      );
+    }
+    return SignInScreen(onSignedIn: _onSignedIn);
   }
 }

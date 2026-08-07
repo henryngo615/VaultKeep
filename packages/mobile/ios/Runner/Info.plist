@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan a QR code to approve this device from one you already trust.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Use Face ID to unlock your vault without typing your master password.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
